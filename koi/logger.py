@@ -3,31 +3,36 @@ class Logger:
     SUCCESS = 92
     START = 93
     FAIL = 94
+    DEBUG = 95
     INFO = 96
 
     @classmethod
     def log(cls, msg, end="\n", flush=False):
-        print(msg, end=end, flush=flush)
+        print(msg, end=end, flush=flush)  # white
 
     @classmethod
     def error(cls, msg, end="\n", flush=False):
-        cls._log(cls.ERROR, msg, end=end, flush=flush)
+        cls._log(cls.ERROR, msg, end=end, flush=flush)  # red
 
     @classmethod
     def success(cls, msg, end="\n", flush=False):
-        cls._log(cls.SUCCESS, msg, end=end, flush=flush)
+        cls._log(cls.SUCCESS, msg, end=end, flush=flush)  # green
 
     @classmethod
     def start(cls, msg, end="\n", flush=False):
-        cls._log(cls.START, msg, end=end, flush=flush)
+        cls._log(cls.START, msg, end=end, flush=flush)  # yellow
 
     @classmethod
     def fail(cls, msg, end="\n", flush=False):
-        cls._log(cls.FAIL, msg, end=end, flush=flush)
+        cls._log(cls.FAIL, msg, end=end, flush=flush)  # blue
+
+    @classmethod
+    def debug(cls, msg, end="\n", flush=False):
+        cls._log(cls.DEBUG, msg, end=end, flush=flush)  # purple
 
     @classmethod
     def info(cls, msg, end="\n", flush=False):
-        cls._log(cls.INFO, msg, end=end, flush=flush)
+        cls._log(cls.INFO, msg, end=end, flush=flush)  # light blue
 
     @classmethod
     def _log(cls, level, msg, end="\n", flush=False):

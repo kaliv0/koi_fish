@@ -16,12 +16,6 @@ def get_command_line_args():
         nargs="+",
         help="pick a job from config file to run",
     )
-    # parser.add_argument(
-    #     "--no-stats",
-    #     action="store_true",
-    #     help="Show workflow run stats",
-    # )
-    # parser.set_defaults(no_stats=False)
     return parser.parse_args()
 
 

@@ -2,14 +2,15 @@ import os
 import subprocess
 import sys
 import time
+import tomllib
+from functools import cached_property
 from itertools import chain
 
 from .logger import Logger
 
 
 class Runner:
-    CONFIG_FILE = "koi"
-    CONFIG_FORMATS = [".toml", ".json", ".yaml"]
+    CONFIG_FILE = "koi.toml"
 
     def __init__(self):
         self.data = {}
@@ -19,13 +20,13 @@ class Runner:
         self.failed_jobs = []
         self.is_successful = False
 
-    @property
+    @cached_property
     def skipped_jobs(self):
         return [
             job for job in self.all_jobs if job not in chain(self.failed_jobs, self.successful_jobs)
         ]
 
-    @property
+    @cached_property
     def job_suite(self):
         if self.cli_jobs:
             self.all_jobs = self.cli_jobs
@@ -36,15 +37,19 @@ class Runner:
                 return None
             self.all_jobs = jobs["suite"]
         else:
-            self.all_jobs = list(self.data.keys())
+            self.all_jobs = list(self.data)
         return ((k, self.data[k]) for k in self.all_jobs)
 
-    # main flow
+    ### main flow ###
     def run(self, jobs):
         global_start = time.perf_counter()
-        Logger.info("Workflow run begins:")
+        if (display_stats := not jobs or len(jobs) > 1):
+            Logger.info("Let's go fishin'!")
         self._run_stages(jobs)
         global_stop = time.perf_counter()
+
+        if not display_stats:
+            return
 
         if self.is_successful:
             Logger.info(f"All jobs succeeded! {self.successful_jobs}")
@@ -69,33 +74,18 @@ class Runner:
         self._run_jobs()
 
     def _handle_config_file(self):
-        for config_fmt in self.CONFIG_FORMATS:
-            config_path = os.path.join(os.getcwd(), f"{self.CONFIG_FILE}{config_fmt}")
-            if not os.path.exists(config_path):
-                continue
-            if not os.path.getsize(config_path):
-                Logger.fail("Empty config file")
-                return False
-            return self._read_config_file(config_path)
-        Logger.fail("Config file not found")
-        return False
+        config_path = os.path.join(os.getcwd(), self.CONFIG_FILE)
+        if not os.path.exists(config_path):
+            Logger.fail("Config file not found")
+            return False
+        if not os.path.getsize(config_path):
+            Logger.fail("Empty config file")
+            return False
+        return self._read_config_file(config_path)
 
     def _read_config_file(self, config_path):
         with open(config_path, "rb") as f:
-            _, extension = os.path.splitext(config_path)
-            match extension:
-                case ".toml":
-                    import tomllib
-
-                    self.data = tomllib.load(f)
-                case ".json":
-                    import json
-
-                    self.data = json.load(f)
-                case ".yaml":
-                    import yaml
-
-                    self.data = yaml.safe_load(f)
+            self.data = tomllib.load(f)
         return bool(self.data)
 
     def _read_jobs(self, jobs):
@@ -118,10 +108,17 @@ class Runner:
             Logger.start(f"{table.upper()}:")
             start = time.perf_counter()
 
+            install = self._build_install_command(table_entries)
             if not (run := self._build_run_command(table, table_entries)):
                 return False
 
-            if not (is_job_successful := self._run_subprocess(run)):
+            # NB: add more steps here e.g. teardown after run
+            cmds = []
+            if install:
+                cmds.append(install)
+            cmds.append(run)
+
+            if not (is_job_successful := self._run_subprocess(" && ".join(cmds))):
                 self.failed_jobs.append(table)
                 Logger.error(f"{table.upper()} failed")
             else:
@@ -132,6 +129,13 @@ class Runner:
 
         self.is_successful = is_run_successful
         Logger.log("#########################################")
+
+    # build shell commands
+    @staticmethod
+    def _build_install_command(table_entries):
+        if not (deps := table_entries.get("dependencies", None)):
+            return None
+        return " && ".join(deps) if isinstance(deps, list) else deps
 
     def _build_run_command(self, table, table_entries):
         if not (cmds := table_entries.get("commands", None)):
@@ -154,11 +158,11 @@ class Runner:
             while (text := proc.stdout.read1().decode("utf-8")) or (
                 err := proc.stderr.read1().decode("utf-8")
             ):
+                # TODO: optimize not to create new text and err vars on each iteration?!
                 if text:
                     Logger.log(text, end="", flush=True)
-                    if "error" in text.lower():
-                        is_successful = False
+                # TODO: either/or?
                 elif err:
-                    is_successful = False
-                    Logger.error(err, end="", flush=True)
+                    Logger.debug(err, end="", flush=True)
+        is_successful = proc.returncode == 0
         return is_successful
