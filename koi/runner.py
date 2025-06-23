@@ -26,24 +26,48 @@ class Runner:
             job for job in self.all_jobs if job not in chain(self.failed_jobs, self.successful_jobs)
         ]
 
+    # TODO: extract config tables consts: commands, dependecies, run, suite
     @cached_property
     def job_suite(self):
         if self.cli_jobs:
-            self.all_jobs = self.cli_jobs
-        elif "run" in self.data:
-            jobs = dict(self.data["run"].items())
-            if "suite" not in jobs:
-                Logger.error("Encountered error: missing key 'suite' in 'run' table")
-                return None
-            self.all_jobs = jobs["suite"]
+            self._handle_cli_jobs()
+        elif "run" in self.data and not self._handle_config_jobs():
+            return None
         else:
             self.all_jobs = list(self.data)
         return ((k, self.data[k]) for k in self.all_jobs)
 
+    def _handle_cli_jobs(self):
+        # TODO: possibly filtering "run" job out could be done earlier -> inside _read_cli_jobs()?
+        if "run" in self.cli_jobs:
+            self.all_jobs = [job for job in self.data if job != "run"]
+        else:
+            self.all_jobs = self.cli_jobs
+
+    def _handle_config_jobs(self):
+        jobs = dict(self.data["run"].items())
+        if "suite" not in jobs:
+            Logger.error("Error: missing key 'suite' in 'run' table")
+            return False
+        if not jobs["suite"]:
+            Logger.error("Error: 'run suite' cannot be empty")
+            return False
+        if not isinstance(jobs["suite"], list):
+            Logger.error("Error: 'run suite' must be of type list")
+            return False
+        if "run" in jobs["suite"]:
+            Logger.error("Error: 'run suite' cannot contain itself recursively")
+            return False
+        if invalid_jobs := [job for job in jobs["suite"] if job not in self.data]:
+            Logger.error(f"Error: 'run suite' contains invalid jobs: {invalid_jobs}")
+            return False
+        self.all_jobs = jobs["suite"]
+        return True
+
     ### main flow ###
     def run(self, jobs):
         global_start = time.perf_counter()
-        if (display_stats := not jobs or len(jobs) > 1):
+        if display_stats := not jobs or len(jobs) > 1:
             Logger.info("Let's go fishin'!")
         self._run_stages(jobs)
         global_stop = time.perf_counter()
@@ -51,6 +75,7 @@ class Runner:
         if not display_stats:
             return
 
+        # TODO: extract log_stats -> call if display_stats is True
         if self.is_successful:
             Logger.info(f"All jobs succeeded! {self.successful_jobs}")
             Logger.info(f"Run took: {global_stop - global_start}")
@@ -68,7 +93,7 @@ class Runner:
             Logger.fail(f"Skipped jobs: {self.skipped_jobs}")
 
     def _run_stages(self, jobs):
-        if not (self._handle_config_file() and self._read_jobs(jobs)):
+        if not (self._handle_config_file() and self._read_cli_jobs(jobs)):
             Logger.fail("Run failed")
             sys.exit(1)
         self._run_jobs()
@@ -88,7 +113,7 @@ class Runner:
             self.data = tomllib.load(f)
         return bool(self.data)
 
-    def _read_jobs(self, jobs):
+    def _read_cli_jobs(self, jobs):
         if jobs is None:
             return True
         for job in jobs:
@@ -140,9 +165,7 @@ class Runner:
     def _build_run_command(self, table, table_entries):
         if not (cmds := table_entries.get("commands", None)):
             self.failed_jobs.append(table)
-            Logger.error(
-                f"Encountered error: 'commands' in '{table}' table cannot be empty or missing"
-            )
+            Logger.error(f"Error: 'commands' in '{table}' table cannot be empty or missing")
             return None
         return " && ".join(cmds) if isinstance(cmds, list) else cmds
 
