@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://github.com/kaliv0/koi_fish/blob/main/assets/koi-fish.jpg?raw=true" width="250" alt="Koi fish">
+  <img src="https://github.com/kaliv0/koi_fish/blob/main/assets/koi-fish.jpg?raw=true" width="450" alt="Koi fish">
 </p>
 
 # Koi fish
