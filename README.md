@@ -5,7 +5,7 @@
 # Koi fish
 
 ![Python 3.X](https://img.shields.io/badge/python-^3.11-blue?style=flat-square&logo=Python&logoColor=white)
-[![PyPI](https://img.shields.io/pypi/v/koi-fosh.svg)](https://pypi.org/project/koi-fish/)
+[![PyPI](https://img.shields.io/pypi/v/koi-fish.svg)](https://pypi.org/project/koi-fish/)
 [![Downloads](https://static.pepy.tech/badge/koi-fish)](https://pepy.tech/projects/koi-fish)
 
 <br>Command line automation tool
