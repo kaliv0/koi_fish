@@ -16,6 +16,11 @@ def get_command_line_args():
         nargs="+",
         help="pick a job from config file to run",
     )
+    # TODO: add -a/--all-jobs -> show all jobs from koi.toml with description and commands in command line
+    # add -s/--show [JOB] -> similar to --all-jobs for selected job
+    # add -c/--commands -> show commands when running them e.g. uv run ruff format
+    #    -> or show by default without flag
+    # NB: after adding more jobs -> refactor how they are passed to Runner().run
     return parser.parse_args()
 
 

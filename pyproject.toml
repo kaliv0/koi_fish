@@ -26,9 +26,6 @@ koi = "koi.__main__:main"
 build-backend = "pdm.backend"
 requires = ["pdm-backend"]
 
-# [tool.pdm.build]
-# excludes = ["tests/"]
-
 [tool.ruff]
 fix = true
 line-length = 100
