@@ -1,0 +1,14 @@
+- add -a/--all-jobs -> show all jobs from koi.toml with description and commands in command line
+- add -s/--show [JOB] -> similar to --all-jobs for selected job
+
+- add -c/--commands -> show commands when running them e.g. uv run ruff format
+    -> or show by default without flag
+
+- support -c and -s as flags in config tables??
+
+- add --skip -> skip command if user runes 'koi -j run' or 'koi'
+
+- use shlex for parsing and building bash commands
+    -> use loops instead of ' && '.join(cmds)
+
+NB: after adding more jobs -> refactor how they are passed to Runner().run

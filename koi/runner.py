@@ -1,10 +1,14 @@
+import itertools
 import os
 import subprocess
 import sys
 import time
 import tomllib
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from functools import cached_property
 from itertools import chain
+from threading import Event
 
 from .logger import Logger
 
@@ -20,13 +24,17 @@ class Table:
 
 
 class Runner:
-    def __init__(self):
+    def __init__(self, jobs, silent):
+        self.cli_jobs = jobs
+        self.silent = silent
+
         self.data = {}
         self.all_jobs = []
-        self.cli_jobs = []
         self.successful_jobs = []
         self.failed_jobs = []
         self.is_successful = False
+
+        self.supervisor = None  # used for spinner with --silent flag
 
     @cached_property
     def skipped_jobs(self):
@@ -75,11 +83,11 @@ class Runner:
         return True
 
     ### main flow ###
-    def run(self, jobs):
+    def run(self):
         global_start = time.perf_counter()
-        if display_stats := not jobs or len(jobs) > 1:
-            Logger.info("Let's go fishin'!")
-        self._run_stages(jobs)
+        if display_stats := not self.cli_jobs or len(self.cli_jobs) > 1:
+            Logger.info("Let's go!")
+        self._run_stages()
         global_stop = time.perf_counter()
         if display_stats:
             self._log_stats(total_time=(global_stop - global_start))
@@ -101,8 +109,8 @@ class Runner:
         if self.skipped_jobs:
             Logger.fail(f"Skipped jobs: {self.skipped_jobs}")
 
-    def _run_stages(self, jobs):
-        if not (self._handle_config_file() and self._read_cli_jobs(jobs)):
+    def _run_stages(self):
+        if not (self._handle_config_file() and self._validate_cli_jobs()):
             Logger.fail("Run failed")
             sys.exit(1)
         self._run_jobs()
@@ -122,13 +130,12 @@ class Runner:
             self.data = tomllib.load(f)
         return bool(self.data)
 
-    def _read_cli_jobs(self, jobs):
-        if jobs is None:
+    def _validate_cli_jobs(self):
+        if not self.cli_jobs:
             return True
-        if invalid_job := next((job for job in jobs if job not in self.data), None):
+        if invalid_job := next((job for job in self.cli_jobs if job not in self.data), None):
             Logger.fail(f"'{invalid_job}' not found in jobs suite")
             return False
-        self.cli_jobs = jobs
         return True
 
     def _run_jobs(self):
@@ -136,7 +143,7 @@ class Runner:
             return False
 
         is_run_successful = True
-        for table, table_entries in self.job_suite:
+        for i, (table, table_entries) in enumerate(self.job_suite):
             Logger.log(DELIMITER)
             Logger.start(f"{table.upper()}:")
             start = time.perf_counter()
@@ -151,7 +158,7 @@ class Runner:
                 cmds.append(install)
             cmds.append(run)
 
-            if not (is_job_successful := self._run_subprocess(" && ".join(cmds))):
+            if not (is_job_successful := self._execute_shell_commands(" && ".join(cmds), i)):
                 self.failed_jobs.append(table)
                 Logger.error(f"{table.upper()} failed")
             else:
@@ -177,19 +184,64 @@ class Runner:
             return None
         return " && ".join(cmds) if isinstance(cmds, list) else cmds
 
-    # execute shell commands
-    @staticmethod
-    def _run_subprocess(run):
+    def _execute_shell_commands(self, run, i):
+        if self.silent:
+            self.supervisor = Event()
+            with ThreadPoolExecutor(2) as executor:
+                with self._try():
+                    executor.submit(self._spinner, i)
+                    time.sleep(5)
+                    status = self._run_subprocess(run)
+                # self.supervisor.set()
+            return status
+        else:
+            with self._try():
+                return self._run_subprocess(run)
+
+    @contextmanager
+    def _try(self):  # TODO: rename
+        try:
+            yield
+        except KeyboardInterrupt:
+            if self.silent:
+                self.supervisor.set()
+            Logger.error("\033[2K\rHey, I was in the middle of something here!")
+            sys.exit()
+        else:
+            if self.silent:
+                self.supervisor.set()
+
+    def _spinner(self, i):
+        # TODO: extract consts
+        states = [
+            ("\\", "|", "/", "-"),
+            ("▁▁▁", "▁▁▄", "▁▄█", "▄█▄", "█▄▁", "▄▁▁"),
+            ("⣾", "⣷", "⣯", "⣟", "⡿", "⢿", "⣻", "⣽"),
+        ]
+        msg = "Keep fishin'!"
+
+        print("\033[?25l", end="")  # hide blinking cursor
+        for ch in itertools.cycle(states[i % 3]):
+            print(f"\r{ch} {msg} {ch}", end="", flush=True)
+            if self.supervisor.wait(0.1):
+                break
+        print("\033[2K\r", end="")  # clear last line and put cursor at the begining
+        print("\033[?25h", end="")  # make cursor visible
+
+    def _run_subprocess(self, run):
         with subprocess.Popen(
             run, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, executable="/bin/bash"
         ) as proc:
-            # Use read1() instead of read() or Popen.communicate() as both block until EOF
-            # https://docs.python.org/3/library/io.html#io.BufferedIOBase.read1
-            while (text := proc.stdout.read1().decode("utf-8")) or (
-                err := proc.stderr.read1().decode("utf-8")
-            ):
-                if text:
-                    Logger.log(text, end="", flush=True)
-                elif err:
-                    Logger.debug(err, end="", flush=True)
+            if self.silent:
+                proc.communicate()
+            else:
+                # Use read1() instead of read() or Popen.communicate() as both block until EOF
+                # https://docs.python.org/3/library/io.html#io.BufferedIOBase.read1
+                while (text := proc.stdout.read1().decode("utf-8")) or (
+                    err := proc.stderr.read1().decode("utf-8")
+                ):
+                    if text:
+                        Logger.log(text, end="", flush=True)
+                    elif err:
+                        Logger.debug(err, end="", flush=True)
         return proc.returncode == 0
