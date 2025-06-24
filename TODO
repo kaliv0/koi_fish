@@ -1,10 +1,7 @@
-- -a and -d cannot be combined
-- handle koi -j run -> currently runs all jobs in config -> rename not to colide with 'run' table
-- support -v and -s as flags in config tables??
+- support -c and -s as flags in config tables??
 - add --skip -> skip command if user runes 'koi -j run' or 'koi'
 
-- use shlex for parsing and building bash commands
-    -> use loops instead of ' && '.join(cmds)
+- use shlex for parsing and building bash commands?
 
-NB: after adding more jobs -> refactor how they are passed to Runner().run
+NB: after adding more jobs -> refactor how they are passed to Runner().run -> incl reorder them semantically
 - update readme

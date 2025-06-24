@@ -14,7 +14,14 @@ def get_command_line_args():
         "-j",
         "--jobs",
         nargs="+",
+        type=_job_checker,
         help="pick a job from config file to run",
+    )
+    parser.add_argument(
+        "-r",
+        "--run-all",
+        action="store_true",
+        help="run all jobs in config file",
     )
     parser.add_argument(
         "-s",
@@ -37,6 +44,7 @@ def get_command_line_args():
         help="display all jobs in in config file",
     )
     group.add_argument(
+        # TODO: add short -> -x/-t
         "--suite",
         action="store_true",
         help="display all jobs in 'suite' table",
@@ -45,6 +53,7 @@ def get_command_line_args():
         "-d",
         "--describe",
         nargs="+",
+        metavar="jobs",
         help="display config for given job",
     )
 
@@ -53,12 +62,21 @@ def get_command_line_args():
     parser.set_defaults(commands=False)
     parser.set_defaults(all=False)
     parser.set_defaults(suite=False)
+
     return parser.parse_args()
+
+
+def _job_checker(job):
+    if "run" == job:
+        raise argparse.ArgumentTypeError('Invalid job: "run"')
+    return job
 
 
 def main():
     args = get_command_line_args()
-    Runner(args.jobs, args.silent, args.commands, args.suite, args.all, args.describe).run()
+    Runner(
+        args.jobs, args.run_all, args.silent, args.commands, args.suite, args.all, args.describe
+    ).run()
 
 
 if __name__ == "__main__":
