@@ -24,7 +24,7 @@ def get_command_line_args():
         help="run all jobs in config file",
     )
     parser.add_argument(
-        "-s",
+        "-s",  # TODO: rename to -m/--mute -> change --suite to -s/--suite
         "--silent",
         action="store_true",
         help="hide logs",
@@ -44,7 +44,8 @@ def get_command_line_args():
         help="display all jobs in in config file",
     )
     group.add_argument(
-        # TODO: add short -> -x/-t
+        # TODO: remove short
+        "-t",
         "--suite",
         action="store_true",
         help="display all jobs in 'suite' table",
