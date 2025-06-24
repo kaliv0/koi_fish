@@ -22,14 +22,43 @@ def get_command_line_args():
         action="store_true",
         help="hide logs",
     )
+    parser.add_argument(
+        "-c",
+        "--commands",
+        action="store_true",
+        help="log all shell commands",
+    )
 
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument(
+        "-a",
+        "--all",
+        action="store_true",
+        help="display all jobs in in config file",
+    )
+    group.add_argument(
+        "--suite",
+        action="store_true",
+        help="display all jobs in 'suite' table",
+    )
+    group.add_argument(
+        "-d",
+        "--describe",
+        nargs="+",
+        help="display config for given job",
+    )
+
+    # TODO: do we need those?
     parser.set_defaults(silent=False)
+    parser.set_defaults(commands=False)
+    parser.set_defaults(all=False)
+    parser.set_defaults(suite=False)
     return parser.parse_args()
 
 
 def main():
     args = get_command_line_args()
-    Runner(args.jobs, args.silent).run()
+    Runner(args.jobs, args.silent, args.commands, args.suite, args.all, args.describe).run()
 
 
 if __name__ == "__main__":

@@ -24,9 +24,13 @@ class Table:
 
 
 class Runner:
-    def __init__(self, jobs, silent):
+    def __init__(self, jobs, silent, log_commands, display_suite, display_all_jobs, describe_job):
         self.cli_jobs = jobs
-        self.silent = silent
+        self.silent = silent  # TODO: rename silent_logs??
+        self.log_commands = log_commands
+        self.display_suite = display_suite
+        self.display_all_jobs = display_all_jobs
+        self.describe_job = describe_job  # TODO: rename -> job_to_describe
 
         self.data = {}
         self.all_jobs = []
@@ -52,9 +56,10 @@ class Runner:
                 return None
         else:
             self.all_jobs = list(self.data)
-        return ((k, self.data[k]) for k in self.all_jobs)
+        return {k: self.data[k] for k in self.all_jobs}
 
     def _prepare_all_jobs_from_cli(self):
+        # TODO: refactor
         if Table.RUN in self.cli_jobs:
             self.all_jobs = [job for job in self.data if job != Table.RUN]
         else:
@@ -85,8 +90,12 @@ class Runner:
     ### main flow ###
     def run(self):
         global_start = time.perf_counter()
-        if display_stats := not self.cli_jobs or len(self.cli_jobs) > 1:
+        # TODO: refactor complex bool
+        if (display_stats := not self.cli_jobs or len(self.cli_jobs) > 1) and not (
+            self.display_suite or self.display_all_jobs or self.describe_job
+        ):
             Logger.info("Let's go!")
+
         self._run_stages()
         global_stop = time.perf_counter()
         if display_stats:
@@ -113,6 +122,31 @@ class Runner:
         if not (self._handle_config_file() and self._validate_cli_jobs()):
             Logger.fail("Run failed")
             sys.exit(1)
+
+        # TODO: extract as separate stage
+        if self.display_suite:
+            Logger.log([job for job in self.job_suite])
+            sys.exit()
+
+        if self.display_all_jobs:
+            Logger.log([job for job in self.data])
+            sys.exit()
+
+        if self.describe_job:
+            for job in self.describe_job:
+                if not (result := self.data.get(job)):
+                    Logger.fail(f"Selected job '{job}' doesn't exist in the config")
+                    sys.exit()
+                Logger.info(f"{job.upper():}")
+                # TODO: cleanup mess
+                Logger.log(
+                    "\n".join(
+                        f"\t\033[93m{k}\033[00m: {f'\n\t{" " * (len(Table.COMMANDS) + 2)}'.join(v) if isinstance(v, list) else v}"
+                        for k, v in result.items()
+                    )
+                )
+            sys.exit()
+
         self._run_jobs()
 
     def _handle_config_file(self):
@@ -140,10 +174,14 @@ class Runner:
 
     def _run_jobs(self):
         if not self.job_suite:
-            return False
+            # TODO:
+            # return False
+            self.is_successful = False
+            return
 
         is_run_successful = True
-        for i, (table, table_entries) in enumerate(self.job_suite):
+        # TODO: rename i
+        for i, (table, table_entries) in enumerate(self.job_suite.items()):
             Logger.log(DELIMITER)
             Logger.start(f"{table.upper()}:")
             start = time.perf_counter()
@@ -188,19 +226,21 @@ class Runner:
         if self.silent:
             self.supervisor = Event()
             with ThreadPoolExecutor(2) as executor:
-                with self._try():
+                with self._try(run):
                     executor.submit(self._spinner, i)
-                    time.sleep(5)
+                    time.sleep(5)  # TODO
                     status = self._run_subprocess(run)
-                # self.supervisor.set()
             return status
         else:
-            with self._try():
+            with self._try(run):
                 return self._run_subprocess(run)
 
     @contextmanager
-    def _try(self):  # TODO: rename
+    def _try(self, run):  # TODO: rename
         try:
+            # TODO: should we log here?
+            if self.log_commands:
+                Logger.info(run)
             yield
         except KeyboardInterrupt:
             if self.silent:
