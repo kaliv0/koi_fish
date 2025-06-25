@@ -1,11 +1,11 @@
-import argparse
+from argparse import ArgumentParser, ArgumentTypeError, Namespace
 
-from . import __version__
-from .runner import Runner
+from koi import __version__
+from koi.runner import Runner
 
 
-def get_command_line_args():
-    parser = argparse.ArgumentParser(
+def get_command_line_args() -> Namespace:
+    parser = ArgumentParser(
         prog="koi_fish",
         description="CLI automation tool",
     )
@@ -57,17 +57,18 @@ def get_command_line_args():
         help="display config for given job",
     )
 
+    parser.set_defaults(run_all=False)
     parser.set_defaults(silent=False)
-    parser.set_defaults(commands=False)
-    parser.set_defaults(all=False)
+    parser.set_defaults(mute_commands=False)
     parser.set_defaults(suite=False)
+    parser.set_defaults(all=False)
 
     return parser.parse_args()
 
 
-def _job_checker(job):
+def _job_checker(job: str) -> str:
     if "run" == job:
-        raise argparse.ArgumentTypeError('Invalid job: "run"')
+        raise ArgumentTypeError('Invalid job: "run"')
     return job
 
 

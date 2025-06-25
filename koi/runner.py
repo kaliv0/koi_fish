@@ -9,8 +9,9 @@ from contextlib import contextmanager
 from functools import cached_property
 from itertools import chain
 from threading import Event
+from typing import TypeAlias
 
-from .logger import Logger
+from koi.logger import Logger
 
 CONFIG_FILE = "koi.toml"
 
@@ -34,16 +35,20 @@ class Log:
     ]
 
 
+Job: TypeAlias = list[str] | str
+JobTable: TypeAlias = dict[str, Job]
+
+
 class Runner:
     def __init__(
         self,
-        jobs,
-        run_all,
-        silent_logs,
-        mute_commands,
-        display_suite,
-        display_all_jobs,
-        described_job,
+        jobs: list[str] | None = None,  # should be sized
+        run_all: bool = False,
+        silent_logs: bool = False,
+        mute_commands: bool = False,
+        display_suite: bool = False,
+        display_all_jobs: bool = False,
+        described_job: list[str] | None = None,
     ):
         self.cli_jobs = jobs
         self.silent_logs = silent_logs
@@ -53,36 +58,36 @@ class Runner:
         self.display_all_jobs = display_all_jobs
         self.described_job = described_job
 
-        self.data = {}
-        self.all_jobs = []
-        self.successful_jobs = []
-        self.failed_jobs = []
-        self.is_successful = False
+        self.data: dict[str, JobTable] = {}
+        self.all_jobs: list[str] = []
+        self.successful_jobs: list[str] = []
+        self.failed_jobs: list[str] = []
+        self.is_successful: bool = False
         # used for spinner with --silent flag
-        self.supervisor = None
+        self.supervisor: Event
 
     @cached_property
-    def skipped_jobs(self):
+    def skipped_jobs(self) -> list[str]:
         return [
             job for job in self.all_jobs if job not in chain(self.failed_jobs, self.successful_jobs)
         ]
 
     @cached_property
-    def job_suite(self):
+    def job_suite(self) -> dict[str, JobTable]:
         if self.cli_jobs:
             self.all_jobs = self.cli_jobs
         elif self.run_all:
-            self.all_jobs = (job for job in self.data if job != Table.RUN)
+            self.all_jobs = [job for job in self.data if job != Table.RUN]
         elif Table.RUN in self.data:
             is_successful = self.prepare_all_jobs_from_config()
             if not is_successful:
-                return None
+                return {}
         else:
             self.all_jobs = list(self.data)
         return {k: self.data[k] for k in self.all_jobs}
 
-    def prepare_all_jobs_from_config(self):
-        jobs = dict(self.data[Table.RUN].items())
+    def prepare_all_jobs_from_config(self) -> bool:
+        jobs = self.data[Table.RUN]
         if Table.SUITE not in jobs:
             Logger.error(f"Error: missing key '{Table.SUITE}' in '{Table.RUN}' table")
             return False
@@ -100,11 +105,11 @@ class Runner:
                 f"Error: '{Table.RUN} {Table.SUITE}' contains invalid jobs: {invalid_jobs}"
             )
             return False
-        self.all_jobs = jobs[Table.SUITE]
+        self.all_jobs = jobs[Table.SUITE]  # type: ignore ## 'suite' is always list of str
         return True
 
     ### main flow ###
-    def run(self):
+    def run(self) -> None:
         global_start = time.perf_counter()
 
         should_display_stats = not self.cli_jobs or len(self.cli_jobs) > 1
@@ -118,7 +123,7 @@ class Runner:
         if should_display_stats:
             self.log_stats(total_time=(global_stop - global_start))
 
-    def log_stats(self, total_time):
+    def log_stats(self, total_time: float) -> None:
         if self.is_successful:
             Logger.info(f"All jobs succeeded! {self.successful_jobs}")
             Logger.info(f"Run took: {total_time}")
@@ -135,7 +140,7 @@ class Runner:
         if self.skipped_jobs:
             Logger.fail(f"Skipped jobs: {self.skipped_jobs}")
 
-    def run_stages(self):
+    def run_stages(self) -> None:
         if not (self.handle_config_file() and self.validate_cli_jobs()):
             Logger.fail("Run failed")
             sys.exit(1)
@@ -144,7 +149,7 @@ class Runner:
             sys.exit()
         self.run_jobs()
 
-    def handle_config_file(self):
+    def handle_config_file(self) -> bool:
         config_path = os.path.join(os.getcwd(), CONFIG_FILE)
         if not os.path.exists(config_path):
             Logger.fail("Config file not found")
@@ -154,12 +159,12 @@ class Runner:
             return False
         return self.read_config_file(config_path)
 
-    def read_config_file(self, config_path):
+    def read_config_file(self, config_path: str) -> bool:
         with open(config_path, "rb") as f:
             self.data = tomllib.load(f)
         return bool(self.data)
 
-    def validate_cli_jobs(self):
+    def validate_cli_jobs(self) -> bool:
         if not self.cli_jobs:
             return True
         if invalid_job := next((job for job in self.cli_jobs if job not in self.data), None):
@@ -167,7 +172,7 @@ class Runner:
             return False
         return True
 
-    def display_jobs_info(self):
+    def display_jobs_info(self) -> None:
         if self.display_suite:
             Logger.log([job for job in self.job_suite])
         elif self.display_all_jobs:
@@ -185,7 +190,7 @@ class Runner:
                     )
                 )
 
-    def run_jobs(self):
+    def run_jobs(self) -> None:
         if not self.job_suite:
             self.is_successful = False
             return
@@ -198,7 +203,7 @@ class Runner:
 
             install = self.build_install_command(table_entries)
             if not (run := self.build_run_command(table, table_entries)):
-                return False
+                return
 
             cmds = self.build_commands_list(install, run)
             if not (is_job_successful := self.execute_shell_commands(cmds, i)):
@@ -214,19 +219,19 @@ class Runner:
         Logger.log(Log.DELIMITER)
 
     @staticmethod
-    def build_install_command(table_entries):
+    def build_install_command(table_entries: JobTable) -> Job | None:
         if not (deps := table_entries.get(Table.DEPENDENCIES, None)):
             return None
         return deps
 
-    def build_run_command(self, table, table_entries):
+    def build_run_command(self, table: str, table_entries: JobTable) -> Job | None:
         if not (cmds := table_entries.get(Table.COMMANDS, None)):
             self.failed_jobs.append(table)
             Logger.error(f"Error: '{Table.COMMANDS}' in '{table}' table cannot be empty or missing")
             return None
         return cmds
 
-    def build_commands_list(self, install, run):
+    def build_commands_list(self, install: Job | None, run: Job) -> list[str]:
         # NB: add more steps here e.g. teardown/cleanup after run
         cmds = []
         if install:
@@ -241,7 +246,7 @@ class Runner:
             cmds.append(run)
         return cmds
 
-    def execute_shell_commands(self, cmds, i):
+    def execute_shell_commands(self, cmds: list[str], i: int) -> bool:
         if self.silent_logs:
             self.supervisor = Event()
             with ThreadPoolExecutor(2) as executor:
@@ -254,7 +259,7 @@ class Runner:
                 return self.run_subprocess(cmds)
 
     @contextmanager
-    def shell_manager(self, cmds):
+    def shell_manager(self, cmds: list[str]):
         try:
             if not self.mute_commands:
                 Logger.info("\n".join(cmds))
@@ -268,7 +273,7 @@ class Runner:
             if self.silent_logs:
                 self.supervisor.set()
 
-    def spinner(self, i):
+    def spinner(self, i: int) -> None:
         msg = "Keep fishin'!"
         print("\033[?25l", end="")  # hide blinking cursor
         for ch in itertools.cycle(Log.STATES[i % 3]):
@@ -278,7 +283,7 @@ class Runner:
         print("\033[2K\r", end="")  # clear last line and put cursor at the begining
         print("\033[?25h", end="")  # make cursor visible
 
-    def run_subprocess(self, cmds):
+    def run_subprocess(self, cmds: list[str]) -> bool:
         with subprocess.Popen(
             cmds,
             stdout=subprocess.PIPE,
@@ -291,8 +296,10 @@ class Runner:
             else:
                 # Use read1() instead of read() or Popen.communicate() as both block until EOF
                 # https://docs.python.org/3/library/io.html#io.BufferedIOBase.read1
-                while (text := proc.stdout.read1().decode("utf-8")) or (
-                    err := proc.stderr.read1().decode("utf-8")
+
+                text, err = None, None
+                while (text := proc.stdout.read1().decode("utf-8")) or (  # type: ignore
+                    err := proc.stderr.read1().decode("utf-8")  # type: ignore
                 ):
                     if text:
                         Logger.log(text, end="", flush=True)
