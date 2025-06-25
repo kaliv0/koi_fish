@@ -8,7 +8,7 @@
 [![PyPI](https://img.shields.io/pypi/v/koi-fish.svg)](https://pypi.org/project/koi-fish/)
 [![Downloads](https://static.pepy.tech/badge/koi-fish)](https://pepy.tech/projects/koi-fish)
 
-<br>Command line automation tool
+<br>Command line task runner & automation tool
 
 ---------------------------
 ### How to use
@@ -62,10 +62,42 @@ Skipped jobs: ['test']
 ---------------------------
 - You could run specific jobs in the command line
 ```shell
-$ koi -j format
+$ koi --job format
 ```
 or a list of jobs
 ```shell
 $ koi -j format test
 ```
-<b>NB:</b> If there is a <i>'run'</i> table in the config file the jobs specified in the command line take precedence
+<b>NB:</b> If there is a <i>'run'</i> table in the config file jobs specified in the command line take precedence
+- other available options
+```shell
+# run all jobs from the config file 
+$ koi --run-all  # short form: -r
+```
+```shell
+# hide output logs from running commands
+$ koi --silent  # -s
+```
+```shell
+# don't print shell commands - similar to @<command> in Makefile
+$ koi --mute-commands  # -m
+```
+```shell
+# display all jobs from the config file
+$ koi --all  # -a
+# ['install', 'format', 'test', 'cleanup', 'run']
+
+```
+```shell
+# display all jobs from the 'suite' table
+$ koi --suite  # -t
+# ['install', 'format', 'test']
+```
+```shell
+# display config for a given job
+$ koi --describe  format  # -d
+# FORMAT
+#   description: format code
+#	  commands: uv run ruff check
+#	            uv run ruff format
+```

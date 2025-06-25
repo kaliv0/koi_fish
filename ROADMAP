@@ -1,0 +1,9 @@
+- support -m and -s as flags in config tables??
+- add --skip -> skip command if user runes 'koi -j run' or 'koi'
+- support clean(up) as section in tables after commands -> counterpart of dependencies 
+- rename dependencies to setup, commands to cmd
+
+- support advanced configs e.g. variables, loops etc.
+
+- use shlex for parsing and building bash commands?
+- reorder semantically jobs passed to Runner()

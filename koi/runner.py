@@ -24,7 +24,7 @@ class Table:
 
 class Log:
     DELIMITER = "#########################################"
-    PADDING = f"\n\t{' ' * (len(Table.COMMANDS) + 2)}"  # move to consts
+    PADDING = f"\n\t{' ' * (len(Table.COMMANDS) + 2)}"
     COLORED = "\t\033[93m{key}\033[00m"
 
     STATES = [
@@ -40,7 +40,7 @@ class Runner:
         jobs,
         run_all,
         silent_logs,
-        log_commands,
+        mute_commands,
         display_suite,
         display_all_jobs,
         described_job,
@@ -48,7 +48,7 @@ class Runner:
         self.cli_jobs = jobs
         self.silent_logs = silent_logs
         self.run_all = run_all
-        self.log_commands = log_commands
+        self.mute_commands = mute_commands
         self.display_suite = display_suite
         self.display_all_jobs = display_all_jobs
         self.described_job = described_job
@@ -187,12 +187,10 @@ class Runner:
 
     def run_jobs(self):
         if not self.job_suite:
-            # TODO: test
             self.is_successful = False
             return
 
         is_run_successful = True
-        # TODO: rename i
         for i, (table, table_entries) in enumerate(self.job_suite.items()):
             Logger.log(Log.DELIMITER)
             Logger.start(f"{table.upper()}:")
@@ -249,7 +247,6 @@ class Runner:
             with ThreadPoolExecutor(2) as executor:
                 with self.shell_manager(cmds):
                     executor.submit(self.spinner, i)
-                    time.sleep(5)  # TODO
                     status = self.run_subprocess(cmds)
             return status
         else:
@@ -257,9 +254,9 @@ class Runner:
                 return self.run_subprocess(cmds)
 
     @contextmanager
-    def shell_manager(self, cmds):  # TODO: rename
+    def shell_manager(self, cmds):
         try:
-            if self.log_commands:
+            if not self.mute_commands:
                 Logger.info("\n".join(cmds))
             yield
         except KeyboardInterrupt:
@@ -273,7 +270,6 @@ class Runner:
 
     def spinner(self, i):
         msg = "Keep fishin'!"
-        # TODO: extract hex codes
         print("\033[?25l", end="")  # hide blinking cursor
         for ch in itertools.cycle(Log.STATES[i % 3]):
             print(f"\r{ch} {msg} {ch}", end="", flush=True)
