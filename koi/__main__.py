@@ -24,16 +24,16 @@ def get_command_line_args():
         help="run all jobs in config file",
     )
     parser.add_argument(
-        "-s",  # TODO: rename to -m/--mute -> change --suite to -s/--suite
+        "-s",
         "--silent",
         action="store_true",
-        help="hide logs",
+        help="hide output logs from running commands",
     )
     parser.add_argument(
-        "-c",
-        "--commands",
+        "-m",
+        "--mute-commands",
         action="store_true",
-        help="log all shell commands",
+        help="don't print shell commands",
     )
 
     group = parser.add_mutually_exclusive_group()
@@ -41,10 +41,9 @@ def get_command_line_args():
         "-a",
         "--all",
         action="store_true",
-        help="display all jobs in in config file",
+        help="display all jobs in config file",
     )
     group.add_argument(
-        # TODO: remove short
         "-t",
         "--suite",
         action="store_true",
@@ -54,11 +53,10 @@ def get_command_line_args():
         "-d",
         "--describe",
         nargs="+",
-        metavar="jobs",
+        metavar="JOBS",
         help="display config for given job",
     )
 
-    # TODO: do we need those?
     parser.set_defaults(silent=False)
     parser.set_defaults(commands=False)
     parser.set_defaults(all=False)
@@ -76,7 +74,13 @@ def _job_checker(job):
 def main():
     args = get_command_line_args()
     Runner(
-        args.jobs, args.run_all, args.silent, args.commands, args.suite, args.all, args.describe
+        args.jobs,
+        args.run_all,
+        args.silent,
+        args.mute_commands,
+        args.suite,
+        args.all,
+        args.describe,
     ).run()
 
 
