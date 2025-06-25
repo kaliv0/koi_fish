@@ -1,6 +1,6 @@
 [project]
 name = "koi-fish"
-version = "1.0.0"
+version = "1.0.1"
 description = "CLI task runner & automation tool"
 keywords = ["task automation", "cli tool", "command line runner", "task runner"]
 authors = [
@@ -10,7 +10,7 @@ urls = {repository = "https://github.com/kaliv0/koi_fish.git"}
 license-files = ["LICENSE"]
 readme = "README.md"
 
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 
 dependencies = []
 

@@ -4,7 +4,7 @@
 
 # Koi fish
 
-![Python 3.X](https://img.shields.io/badge/python-^3.11-blue?style=flat-square&logo=Python&logoColor=white)
+![Python 3.X](https://img.shields.io/badge/python-^3.12-blue?style=flat-square&logo=Python&logoColor=white)
 [![PyPI](https://img.shields.io/pypi/v/koi-fish.svg)](https://pypi.org/project/koi-fish/)
 [![Downloads](https://static.pepy.tech/badge/koi-fish)](https://pepy.tech/projects/koi-fish)
 
@@ -69,6 +69,7 @@ or a list of jobs
 $ koi -j format test
 ```
 <b>NB:</b> If there is a <i>'run'</i> table in the config file jobs specified in the command line take precedence
+
 - other available options
 ```shell
 # run all jobs from the config file 
@@ -82,6 +83,11 @@ $ koi --silent  # -s
 # don't print shell commands - similar to @<command> in Makefile
 $ koi --mute-commands  # -m
 ```
+```shell
+# skip a job from config file - can be combined e.g. with --run-all
+$ koi -r --skip test
+```
+- commands showing data
 ```shell
 # display all jobs from the config file
 $ koi --all  # -a
@@ -97,7 +103,7 @@ $ koi --suite  # -t
 # display config for a given job
 $ koi --describe  format  # -d
 # FORMAT
-#   description: format code
-#	  commands: uv run ruff check
-#	            uv run ruff format
+#         description: format code
+#         commands: uv run ruff check
+#                   uv run ruff format
 ```

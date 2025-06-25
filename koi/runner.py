@@ -11,29 +11,8 @@ from itertools import chain
 from threading import Event
 from typing import TypeAlias
 
+from koi.constants import CONFIG_FILE, LogMessages, Table
 from koi.logger import Logger
-
-CONFIG_FILE = "koi.toml"
-
-
-class Table:
-    COMMANDS = "commands"
-    DEPENDENCIES = "dependencies"
-    RUN = "run"
-    SUITE = "suite"
-
-
-class Log:
-    DELIMITER = "#########################################"
-    PADDING = f"\n\t{' ' * (len(Table.COMMANDS) + 2)}"
-    COLORED = "\t\033[93m{key}\033[00m"
-
-    STATES = [
-        ("\\", "|", "/", "-"),
-        ("▁▁▁", "▁▁▄", "▁▄█", "▄█▄", "█▄▁", "▄▁▁"),
-        ("⣾", "⣷", "⣯", "⣟", "⡿", "⢿", "⣻", "⣽"),
-    ]
-
 
 Job: TypeAlias = list[str] | str
 JobTable: TypeAlias = dict[str, Job]
@@ -42,21 +21,23 @@ JobTable: TypeAlias = dict[str, Job]
 class Runner:
     def __init__(
         self,
-        jobs: list[str] | None = None,  # should be sized
-        run_all: bool = False,
-        silent_logs: bool = False,
-        mute_commands: bool = False,
-        display_suite: bool = False,
-        display_all_jobs: bool = False,
-        described_job: list[str] | None = None,
-    ):
-        self.cli_jobs = jobs
-        self.silent_logs = silent_logs
+        cli_jobs: list[str],
+        jobs_to_omit: list[str],
+        run_all: bool,
+        silent_logs: bool,
+        mute_commands: bool,
+        display_suite: bool,
+        display_all: bool,
+        jobs_to_describe: list[str],
+    ) -> None:
+        self.cli_jobs = cli_jobs
+        self.jobs_to_omit = jobs_to_omit
         self.run_all = run_all
+        self.silent_logs = silent_logs
         self.mute_commands = mute_commands
         self.display_suite = display_suite
-        self.display_all_jobs = display_all_jobs
-        self.described_job = described_job
+        self.display_all = display_all
+        self.jobs_to_describe = jobs_to_describe
 
         self.data: dict[str, JobTable] = {}
         self.all_jobs: list[str] = []
@@ -84,7 +65,20 @@ class Runner:
                 return {}
         else:
             self.all_jobs = list(self.data)
-        return {k: self.data[k] for k in self.all_jobs}
+        return {k: self.data[k] for k in self.all_jobs if k not in self.jobs_to_omit}
+
+    @property
+    def should_display_stats(self) -> bool:
+        return not self.cli_jobs or len(self.cli_jobs) > 1
+
+    @property
+    def should_display_job_info(self) -> bool:
+        # make mypy less annoying
+        return self.display_suite or self.display_all or bool(self.jobs_to_describe)
+
+    @property
+    def run_full_pipeline(self) -> bool:
+        return not self.cli_jobs or self.run_all
 
     def prepare_all_jobs_from_config(self) -> bool:
         jobs = self.data[Table.RUN]
@@ -111,17 +105,19 @@ class Runner:
     ### main flow ###
     def run(self) -> None:
         global_start = time.perf_counter()
-
-        should_display_stats = not self.cli_jobs or len(self.cli_jobs) > 1
-        should_display_job_info = self.display_suite or self.display_all_jobs or self.described_job
-        if should_display_stats and not should_display_job_info:
-            Logger.info("Let's go!")
-
+        self.print_header()
         self.run_stages()
         global_stop = time.perf_counter()
-
-        if should_display_stats:
+        if self.should_display_stats:
             self.log_stats(total_time=(global_stop - global_start))
+
+    def print_header(self) -> None:
+        if not self.should_display_stats or self.should_display_job_info:
+            return
+        if self.run_full_pipeline and not self.silent_logs:
+            Logger.info(LogMessages.HEADER)
+        else:
+            Logger.info("Let's go!")
 
     def log_stats(self, total_time: float) -> None:
         if self.is_successful:
@@ -144,7 +140,7 @@ class Runner:
         if not (self.handle_config_file() and self.validate_cli_jobs()):
             Logger.fail("Run failed")
             sys.exit(1)
-        if self.display_suite or self.display_all_jobs or self.described_job:
+        if self.display_suite or self.display_all or self.jobs_to_describe:
             self.display_jobs_info()
             sys.exit()
         self.run_jobs()
@@ -175,29 +171,33 @@ class Runner:
     def display_jobs_info(self) -> None:
         if self.display_suite:
             Logger.log([job for job in self.job_suite])
-        elif self.display_all_jobs:
+        elif self.display_all:
             Logger.log([job for job in self.data])
-        elif self.described_job:
-            for job in self.described_job:
+        elif self.jobs_to_describe:
+            for job in self.jobs_to_describe:
                 if not (result := self.data.get(job)):
                     Logger.fail(f"Selected job '{job}' doesn't exist in the config")
                     break
-                Logger.info(f"{job.upper():}")
-                Logger.log(
-                    "\n".join(
-                        f"{Log.COLORED.format(key=k)}: {Log.PADDING.join(v) if isinstance(v, list) else v}"
-                        for k, v in result.items()
-                    )
-                )
+                Logger.info(f"{job.upper()}:")
+                Logger.log(self.prepare_description_log(result))
+
+    def prepare_description_log(self, data):
+        result = []
+        for key, val in data.items():
+            colored_key = f"\t\033[93m{key}\033[00m"
+            if isinstance(val, list):
+                padding = " " * (len(key) + 2)
+                val = f"\n\t{padding}".join(val)
+            result.append(f"{colored_key}: {val}")
+        return "\n".join(result)
 
     def run_jobs(self) -> None:
         if not self.job_suite:
-            self.is_successful = False
             return
 
         is_run_successful = True
         for i, (table, table_entries) in enumerate(self.job_suite.items()):
-            Logger.log(Log.DELIMITER)
+            Logger.log(LogMessages.DELIMITER)
             Logger.start(f"{table.upper()}:")
             start = time.perf_counter()
 
@@ -216,7 +216,7 @@ class Runner:
             is_run_successful &= is_job_successful
 
         self.is_successful = is_run_successful
-        Logger.log(Log.DELIMITER)
+        Logger.log(LogMessages.DELIMITER)
 
     @staticmethod
     def build_install_command(table_entries: JobTable) -> Job | None:
@@ -233,18 +233,17 @@ class Runner:
 
     def build_commands_list(self, install: Job | None, run: Job) -> list[str]:
         # NB: add more steps here e.g. teardown/cleanup after run
-        cmds = []
+        cmds: list[str] = []
         if install:
-            if isinstance(install, list):
-                cmds.extend(install)
-            else:
-                cmds.append(install)
-
-        if isinstance(run, list):
-            cmds.extend(run)
-        else:
-            cmds.append(run)
+            self.add_command(cmds, install)
+        self.add_command(cmds, run)
         return cmds
+
+    def add_command(self, cmds_list: list[str], cmd: Job) -> None:
+        if isinstance(cmd, list):
+            cmds_list.extend(cmd)
+        else:
+            cmds_list.append(cmd)
 
     def execute_shell_commands(self, cmds: list[str], i: int) -> bool:
         if self.silent_logs:
@@ -267,7 +266,7 @@ class Runner:
         except KeyboardInterrupt:
             if self.silent_logs:
                 self.supervisor.set()
-            Logger.error("\033[2K\rHey, I was in the middle of something here!")
+            Logger.error("\033[2K\rHey, I was in the middle of somethin' here!")
             sys.exit()
         else:
             if self.silent_logs:
@@ -276,7 +275,7 @@ class Runner:
     def spinner(self, i: int) -> None:
         msg = "Keep fishin'!"
         print("\033[?25l", end="")  # hide blinking cursor
-        for ch in itertools.cycle(Log.STATES[i % 3]):
+        for ch in itertools.cycle(LogMessages.STATES[i % 3]):
             print(f"\r{ch} {msg} {ch}", end="", flush=True)
             if self.supervisor.wait(0.1):
                 break

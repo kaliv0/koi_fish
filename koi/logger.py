@@ -1,10 +1,4 @@
-class Level:
-    ERROR = 91
-    SUCCESS = 92
-    START = 93
-    FAIL = 94
-    DEBUG = 95
-    INFO = 96
+from koi.constants import LogLevel
 
 
 class Logger:
@@ -14,27 +8,27 @@ class Logger:
 
     @classmethod
     def error(cls, msg, end="\n", flush=False):
-        cls._log(Level.ERROR, msg, end=end, flush=flush)  # red
+        cls._log(LogLevel.ERROR, msg, end=end, flush=flush)  # red
 
     @classmethod
     def success(cls, msg, end="\n", flush=False):
-        cls._log(Level.SUCCESS, msg, end=end, flush=flush)  # green
+        cls._log(LogLevel.SUCCESS, msg, end=end, flush=flush)  # green
 
     @classmethod
     def start(cls, msg, end="\n", flush=False):
-        cls._log(Level.START, msg, end=end, flush=flush)  # yellow
+        cls._log(LogLevel.START, msg, end=end, flush=flush)  # yellow
 
     @classmethod
     def fail(cls, msg, end="\n", flush=False):
-        cls._log(Level.FAIL, msg, end=end, flush=flush)  # blue
+        cls._log(LogLevel.FAIL, msg, end=end, flush=flush)  # blue
 
     @classmethod
     def debug(cls, msg, end="\n", flush=False):
-        cls._log(Level.DEBUG, msg, end=end, flush=flush)  # purple
+        cls._log(LogLevel.DEBUG, msg, end=end, flush=flush)  # purple
 
     @classmethod
     def info(cls, msg, end="\n", flush=False):
-        cls._log(Level.INFO, msg, end=end, flush=flush)  # light blue
+        cls._log(LogLevel.INFO, msg, end=end, flush=flush)  # light blue
 
     @classmethod
     def _log(cls, level, msg, end="\n", flush=False):
