@@ -6,19 +6,20 @@ commands = "uv sync --all-extras --dev"
 description = "format code"
 commands = ["uv run ruff check", "uv run ruff format"]
 
-[check_types]
+[lint]
 description = "run mypy"
 commands = "uv run mypy ."
 
 [test]
 description = "run tests"
-# dependencies = "uv sync --all-extras --dev"
-commands = "uv run pytest -v --cov=./pyrio --cov-fail-under=90 --cov-report=xml"
+dependencies = "uv pip install pytest"
+commands = "uv run pytest -v ."
+cleanup = "rm -rf .venv/ .pytest_cache/"
 
-[cleanup]
+[teardown]
 description = "remove venv and cache"
 commands = "rm -rf .venv/ .ruff_cache/ .pdm-build/ .pytest_cache/"
 
 [run]
 description = "jobs pipeline"
-suite = ["install", "format", "check_types", "cleanup"]
+suite = ["install", "format", "lint", "teardown"]

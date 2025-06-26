@@ -18,7 +18,7 @@
 [test]
 description = "run tests"
 dependencies = "uv sync --all-extras --dev"
-commands = "uv run pytest -v --cov=./pyrio --cov-fail-under=90 --cov-report=xml"
+commands = "uv run pytest -v --cov=./koi --cov-fail-under=90 --cov-report=xml"
 ```
 - <i>description</i> and <i>dependencies</i> could be optional but not <i>commands</i>
 ```toml

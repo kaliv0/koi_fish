@@ -201,11 +201,12 @@ class Runner:
             Logger.start(f"{table.upper()}:")
             start = time.perf_counter()
 
-            install = self.build_install_command(table_entries)
             if not (run := self.build_run_command(table, table_entries)):
                 return
+            install = self.build_install_command(table_entries)
+            cleanup = self.build_cleanup_command(table_entries)
 
-            cmds = self.build_commands_list(install, run)
+            cmds = self.build_commands_list(install, run, cleanup)
             if not (is_job_successful := self.execute_shell_commands(cmds, i)):
                 self.failed_jobs.append(table)
                 Logger.error(f"{table.upper()} failed")
@@ -218,12 +219,6 @@ class Runner:
         self.is_successful = is_run_successful
         Logger.log(LogMessages.DELIMITER)
 
-    @staticmethod
-    def build_install_command(table_entries: JobTable) -> Job | None:
-        if not (deps := table_entries.get(Table.DEPENDENCIES, None)):
-            return None
-        return deps
-
     def build_run_command(self, table: str, table_entries: JobTable) -> Job | None:
         if not (cmds := table_entries.get(Table.COMMANDS, None)):
             self.failed_jobs.append(table)
@@ -231,12 +226,27 @@ class Runner:
             return None
         return cmds
 
-    def build_commands_list(self, install: Job | None, run: Job) -> list[str]:
-        # NB: add more steps here e.g. teardown/cleanup after run
+    @staticmethod
+    def build_install_command(table_entries: JobTable) -> Job | None:
+        if not (deps := table_entries.get(Table.DEPENDENCIES, None)):
+            return None
+        return deps
+
+    @staticmethod
+    def build_cleanup_command(table_entries: JobTable) -> Job | None:
+        if not (cleanup := table_entries.get(Table.CLEANUP, None)):
+            return None
+        return cleanup
+
+    def build_commands_list(self, install: Job | None, run: Job, cleanup: Job | None) -> list[str]:
         cmds: list[str] = []
         if install:
             self.add_command(cmds, install)
+
         self.add_command(cmds, run)
+
+        if cleanup:
+            self.add_command(cmds, cleanup)
         return cmds
 
     def add_command(self, cmds_list: list[str], cmd: Job) -> None:
@@ -283,8 +293,9 @@ class Runner:
         print("\033[?25h", end="")  # make cursor visible
 
     def run_subprocess(self, cmds: list[str]) -> bool:
+        shell_cmd = " && ".join(cmds)  # presumably every command depends on the previous one
         with subprocess.Popen(
-            cmds,
+            shell_cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             shell=True,

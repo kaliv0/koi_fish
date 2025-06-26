@@ -4,6 +4,7 @@ CONFIG_FILE = "koi.toml"
 class Table:
     COMMANDS = "commands"
     DEPENDENCIES = "dependencies"
+    CLEANUP = "cleanup"
     RUN = "run"
     SUITE = "suite"
 
