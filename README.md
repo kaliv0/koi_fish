@@ -18,14 +18,15 @@
 [test]
 description = "run tests"
 dependencies = "uv sync --all-extras --dev"
-commands = "uv run pytest -v --cov=./koi --cov-fail-under=90 --cov-report=xml"
+commands = "uv run pytest -v ."
+cleanup = "rm -rf .pytest_cache/"
 ```
-- <i>description</i> and <i>dependencies</i> could be optional but not <i>commands</i>
+- <i>description</i>, <i>dependencies</i>  and <i>cleanup</i> could be optional but not <i>commands</i>
 ```toml
 [no-deps]
 commands = "echo 'Hello world'"
 ```
-- <i>dependencies</i> and <i>commands</i> could be strings or (in case of more than one) a list of strings
+- <i>dependencies</i>,  <i>commands</i>  and <i>cleanup</i> could be strings or (in case of more than one) a list of strings
 ```toml
 commands = ["uv run ruff check", "uv run ruff format"]
 ```
@@ -34,6 +35,29 @@ commands = ["uv run ruff check", "uv run ruff format"]
 ```toml
 [run]
 suite = ["lint", "format", "test"]
+```
+---------------------------
+Example <i>koi.toml</i> (used as a main automation tool during the development of this project)
+```toml
+[install]
+description = "setup .venv and install dependencies"
+commands = "uv sync --all-extras --dev"
+
+[format]
+description = "format code"
+commands = ["uv run ruff check", "uv run ruff format"]
+
+[lint]
+description = "run mypy"
+commands = "uv run mypy ."
+
+[teardown]
+description = "remove venv and cache"
+commands = "rm -rf .venv/ .ruff_cache/ .mypy_cache/"
+
+[run]
+description = "jobs pipeline"
+suite = ["install", "format", "lint"]
 ```
 ---------------------------
 - Run the tool in the terminal with a simple <b>'koi'</b> command

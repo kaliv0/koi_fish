@@ -293,9 +293,8 @@ class Runner:
         print("\033[?25h", end="")  # make cursor visible
 
     def run_subprocess(self, cmds: list[str]) -> bool:
-        shell_cmd = " && ".join(cmds)  # presumably every command depends on the previous one
         with subprocess.Popen(
-            shell_cmd,
+            " && ".join(cmds),  # presumably every command depends on the previous one,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             shell=True,
@@ -306,7 +305,6 @@ class Runner:
             else:
                 # Use read1() instead of read() or Popen.communicate() as both block until EOF
                 # https://docs.python.org/3/library/io.html#io.BufferedIOBase.read1
-
                 text, err = None, None
                 while (text := proc.stdout.read1().decode("utf-8")) or (  # type: ignore
                     err := proc.stderr.read1().decode("utf-8")  # type: ignore

@@ -10,16 +10,10 @@ commands = ["uv run ruff check", "uv run ruff format"]
 description = "run mypy"
 commands = "uv run mypy ."
 
-[test]
-description = "run tests"
-dependencies = "uv pip install pytest"
-commands = "uv run pytest -v ."
-cleanup = "rm -rf .venv/ .pytest_cache/"
-
 [teardown]
 description = "remove venv and cache"
-commands = "rm -rf .venv/ .ruff_cache/ .pdm-build/ .pytest_cache/"
+commands = "rm -rf .venv/ .ruff_cache/ .mypy_cache/"
 
 [run]
 description = "jobs pipeline"
-suite = ["install", "format", "lint", "teardown"]
+suite = ["install", "format", "lint"]
