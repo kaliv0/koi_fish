@@ -104,7 +104,3 @@ def main():
         args.display_all,
         args.jobs_to_describe,
     ).run()
-
-
-if __name__ == "__main__":
-    main()
