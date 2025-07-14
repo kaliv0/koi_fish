@@ -36,6 +36,9 @@ class Runner:
         self.silent_logs = silent_logs
         self.mute_commands = mute_commands
         self.display_suite = display_suite
+
+        self.fail_fast = False  # TODO: add cli flag
+
         self.display_all = display_all
         self.jobs_to_describe = jobs_to_describe
 
@@ -45,7 +48,7 @@ class Runner:
         self.failed_jobs: list[str] = []
         self.is_successful: bool = False
         # used for spinner with --silent flag
-        self.supervisor: Event
+        self.supervisor: Event  # TODO: initialize here?
 
     @cached_property
     def skipped_jobs(self) -> list[str]:
@@ -73,7 +76,6 @@ class Runner:
 
     @property
     def should_display_job_info(self) -> bool:
-        # make mypy less annoying
         return self.display_suite or self.display_all or bool(self.jobs_to_describe)
 
     @property
@@ -82,24 +84,22 @@ class Runner:
 
     def prepare_all_jobs_from_config(self) -> bool:
         jobs = self.data[Table.RUN]
-        if Table.SUITE not in jobs:
-            Logger.error(f"Error: missing key '{Table.SUITE}' in '{Table.RUN}' table")
+        if Table.MAIN not in jobs:
+            Logger.error(f"Error: missing key '{Table.MAIN}' in '{Table.RUN}' table")
             return False
-        if not jobs[Table.SUITE]:
-            Logger.error(f"Error: '{Table.RUN} {Table.SUITE}' cannot be empty")
+        if not jobs[Table.MAIN]:
+            Logger.error(f"Error: '{Table.RUN} {Table.MAIN}' cannot be empty")
             return False
-        if not isinstance(jobs[Table.SUITE], list):
-            Logger.error(f"Error: '{Table.RUN} {Table.SUITE}' must be of type list")
+        if not isinstance(jobs[Table.MAIN], list):
+            Logger.error(f"Error: '{Table.RUN} {Table.MAIN}' must be of type list")
             return False
-        if Table.RUN in jobs[Table.SUITE]:
-            Logger.error(f"Error: '{Table.RUN} {Table.SUITE}' cannot contain itself recursively")
+        if Table.RUN in jobs[Table.MAIN]:
+            Logger.error(f"Error: '{Table.RUN} {Table.MAIN}' cannot contain itself recursively")
             return False
-        if invalid_jobs := [job for job in jobs[Table.SUITE] if job not in self.data]:
-            Logger.error(
-                f"Error: '{Table.RUN} {Table.SUITE}' contains invalid jobs: {invalid_jobs}"
-            )
+        if invalid_jobs := [job for job in jobs[Table.MAIN] if job not in self.data]:
+            Logger.error(f"Error: '{Table.RUN} {Table.MAIN}' contains invalid jobs: {invalid_jobs}")
             return False
-        self.all_jobs = jobs[Table.SUITE]  # type: ignore ## 'suite' is always list of str
+        self.all_jobs = jobs[Table.MAIN]  # type: ignore ## 'main' is always list of str
         return True
 
     ### main flow ###
@@ -181,7 +181,8 @@ class Runner:
                 Logger.info(f"{job.upper()}:")
                 Logger.log(self.prepare_description_log(result))
 
-    def prepare_description_log(self, data):
+    @staticmethod
+    def prepare_description_log(data):
         result = []
         for key, val in data.items():
             colored_key = f"\t\033[93m{key}\033[00m"
@@ -201,12 +202,13 @@ class Runner:
             Logger.start(f"{table.upper()}:")
             start = time.perf_counter()
 
-            if not (run := self.build_run_command(table, table_entries)):
-                return
-            install = self.build_install_command(table_entries)
-            cleanup = self.build_cleanup_command(table_entries)
+            if not (cmds := self.build_commands_list(table, table_entries)):
+                # TODO
+                if self.fail_fast:
+                    return
+                else:
+                    continue
 
-            cmds = self.build_commands_list(install, run, cleanup)
             if not (is_job_successful := self.execute_shell_commands(cmds, i)):
                 self.failed_jobs.append(table)
                 Logger.error(f"{table.upper()} failed")
@@ -217,39 +219,52 @@ class Runner:
             is_run_successful &= is_job_successful
 
         self.is_successful = is_run_successful
+        # TODO: log if there are more jobs to run -> move delimiter in log_stats()
         Logger.log(LogMessages.DELIMITER)
 
-    def build_run_command(self, table: str, table_entries: JobTable) -> Job | None:
-        if not (cmds := table_entries.get(Table.COMMANDS, None)):
-            self.failed_jobs.append(table)
-            Logger.error(f"Error: '{Table.COMMANDS}' in '{table}' table cannot be empty or missing")
-            return None
-        return cmds
-
-    @staticmethod
-    def build_install_command(table_entries: JobTable) -> Job | None:
-        if not (deps := table_entries.get(Table.DEPENDENCIES, None)):
-            return None
-        return deps
-
-    @staticmethod
-    def build_cleanup_command(table_entries: JobTable) -> Job | None:
-        if not (cleanup := table_entries.get(Table.CLEANUP, None)):
-            return None
-        return cleanup
-
-    def build_commands_list(self, install: Job | None, run: Job, cleanup: Job | None) -> list[str]:
+    def build_commands_list(self, table: str, table_entries: JobTable) -> list[str]:
+        # TODO: refactor with loop
         cmds: list[str] = []
-        if install:
-            self.add_command(cmds, install)
+        pre_run, cmd_is_invalid = self.get_command(table_entries, Table.PRE_RUN)
+        if cmd_is_invalid:
+            Logger.error(f"Error: 'duplicated {'|'.join(Table.PRE_RUN)}' entry in '{table}' table")
+            return []
+        if pre_run:
+            self.add_command(cmds, pre_run)
 
+        run, cmd_is_invalid = self.get_command(table_entries, Table.COMMANDS)
+        if cmd_is_invalid:
+            Logger.error(f"Error: 'duplicated {'|'.join(Table.COMMANDS)}' entry in '{table}' table")
+            return []
+        if not run:
+            self.failed_jobs.append(table)
+            Logger.error(
+                f"Error: '{'|'.join(Table.COMMANDS)}' entry in '{table}' table cannot be empty or missing"
+            )
+            return []
         self.add_command(cmds, run)
 
-        if cleanup:
-            self.add_command(cmds, cleanup)
+        post_run, cmd_is_invalid = self.get_command(table_entries, Table.POST_RUN)
+        if cmd_is_invalid:
+            Logger.error(f"Error: 'duplicated {'|'.join(Table.POST_RUN)}' entry in '{table}' table")
+            return []
+        if post_run:
+            self.add_command(cmds, post_run)
         return cmds
 
-    def add_command(self, cmds_list: list[str], cmd: Job) -> None:
+    @staticmethod
+    def get_command(table_entries: JobTable, table_names: set[str]) -> tuple[Job | None, bool]:
+        # TODO: refactor
+        cmd = None
+        for name in table_names:
+            if (entry := table_entries.get(name, None)) is not None:
+                if cmd:
+                    return None, True
+                cmd = entry
+        return cmd, False
+
+    @staticmethod
+    def add_command(cmds_list: list[str], cmd: Job) -> None:
         if isinstance(cmd, list):
             cmds_list.extend(cmd)
         else:
@@ -289,7 +304,7 @@ class Runner:
             print(f"\r{ch} {msg} {ch}", end="", flush=True)
             if self.supervisor.wait(0.1):
                 break
-        print("\033[2K\r", end="")  # clear last line and put cursor at the begining
+        print("\033[2K\r", end="")  # clear last line and put cursor at the beginning
         print("\033[?25h", end="")  # make cursor visible
 
     def run_subprocess(self, cmds: list[str]) -> bool:
@@ -305,7 +320,6 @@ class Runner:
             else:
                 # Use read1() instead of read() or Popen.communicate() as both block until EOF
                 # https://docs.python.org/3/library/io.html#io.BufferedIOBase.read1
-                text, err = None, None
                 while (text := proc.stdout.read1().decode("utf-8")) or (  # type: ignore
                     err := proc.stderr.read1().decode("utf-8")  # type: ignore
                 ):

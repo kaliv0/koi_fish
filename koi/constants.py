@@ -2,11 +2,11 @@ CONFIG_FILE = "koi.toml"
 
 
 class Table:
-    COMMANDS = "commands"
-    DEPENDENCIES = "dependencies"
-    CLEANUP = "cleanup"
+    COMMANDS = {"commands", "cmd"}
+    PRE_RUN = {"pre_run", "pre"}
+    POST_RUN = {"post_run", "post"}
     RUN = "run"
-    SUITE = "suite"
+    MAIN = "main"
 
 
 class LogLevel:
