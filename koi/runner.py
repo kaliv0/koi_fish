@@ -133,7 +133,7 @@ class Runner:
     def print_header(self) -> None:
         if not self.should_display_stats or self.should_display_job_info:
             return
-        if self.run_full_pipeline and not self.silent_logs:
+        if self.run_full_pipeline:# and not self.silent_logs:  # TODO
             Logger.info(LogMessages.HEADER)
         else:
             Logger.info("Let's go!")
@@ -220,7 +220,7 @@ class Runner:
             return
 
         is_run_successful = self.run_sub_flow(is_run_successful=True, is_main_flow=True)
-        if self.fail_fast and self.jobs_to_defer:
+        if self.fail_fast and self.deferred_jobs:
             Logger.log(LogMessages.FINALLY)
             is_run_successful = self.run_sub_flow(
                 is_run_successful=is_run_successful, is_main_flow=False
@@ -300,7 +300,7 @@ class Runner:
             with ThreadPoolExecutor(2) as executor:
                 with self.shell_manager(cmds):
                     executor.submit(self.spinner, i)
-                    # time.sleep(2)  # TODO
+                    time.sleep(5)  # TODO
                     status = self.run_subprocess(cmds)
             return status
         else:
@@ -327,11 +327,15 @@ class Runner:
                 self.supervisor.set()
 
     def spinner(self, i: int) -> None:
+        # TODO
+        animation_idx = i % 4
+        timeout = 0.5 #if animation_idx == 0 else 0.1
         msg = "Keep fishin'!"
         print(Cursor.HIDE_CURSOR, end="")
-        for ch in itertools.cycle(LogMessages.STATES[i % 3]):
-            print(f"\r{ch} {msg} {ch}", end="", flush=True)
-            if self.supervisor.wait(0.1):
+        for ch in itertools.cycle(LogMessages.STATES[1]):
+            print(f"\r{ch}\t{msg}", end="", flush=True)
+            print("\033[3A\r", end="")
+            if self.supervisor.wait(timeout):
                 break
         print(Cursor.CLEAR_LINE, end="")
         print(Cursor.SHOW_CURSOR, end="")
