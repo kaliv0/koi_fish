@@ -11,7 +11,7 @@ from itertools import chain
 from threading import Event
 from typing import TypeAlias
 
-from koi.constants import CONFIG_FILE, LogMessages, Table, Cursor, TextColor
+from koi.constants import CONFIG_FILE, LogMessages, Table, Cursor, TextColor, SPINNER_TIMEOUT
 from koi.logger import Logger
 
 Job: TypeAlias = list[str] | str
@@ -133,7 +133,7 @@ class Runner:
     def print_header(self) -> None:
         if not self.should_display_stats or self.should_display_job_info:
             return
-        if self.run_full_pipeline:# and not self.silent_logs:  # TODO
+        if self.run_full_pipeline:  # and not self.silent_logs:  # TODO
             Logger.info(LogMessages.HEADER)
         else:
             Logger.info("Let's go!")
@@ -300,7 +300,7 @@ class Runner:
             with ThreadPoolExecutor(2) as executor:
                 with self.shell_manager(cmds):
                     executor.submit(self.spinner, i)
-                    time.sleep(5)  # TODO
+                    time.sleep(7)  # TODO
                     status = self.run_subprocess(cmds)
             return status
         else:
@@ -320,24 +320,23 @@ class Runner:
         except KeyboardInterrupt:
             if self.silent_logs:
                 self.supervisor.set()
-            Logger.error(f"{Cursor.CLEAR_LINE}Hey, I was in the middle of somethin' here!")
+            Logger.error(f"{Cursor.CLEAR_ANIMATION}Hey, I was in the middle of somethin' here!")
             sys.exit()
         else:
             if self.silent_logs:
                 self.supervisor.set()
 
     def spinner(self, i: int) -> None:
-        # TODO
-        animation_idx = i % 4
-        timeout = 0.5 #if animation_idx == 0 else 0.1
+        animation_idx = i % 2
         msg = "Keep fishin'!"
         print(Cursor.HIDE_CURSOR, end="")
-        for ch in itertools.cycle(LogMessages.STATES[1]):
+        for ch in itertools.cycle(LogMessages.STATES[animation_idx]):
             print(f"\r{ch}\t{msg}", end="", flush=True)
-            print("\033[3A\r", end="")
-            if self.supervisor.wait(timeout):
+            if animation_idx > 0:
+                print(Cursor.MOVE_CURSOR_UP, end="")
+            if self.supervisor.wait(SPINNER_TIMEOUT):
                 break
-        print(Cursor.CLEAR_LINE, end="")
+        print(Cursor.CLEAR_ANIMATION, end="")
         print(Cursor.SHOW_CURSOR, end="")
 
     def run_subprocess(self, cmds: list[str]) -> bool:

@@ -1,4 +1,5 @@
 CONFIG_FILE = "koi.toml"
+SPINNER_TIMEOUT = 0.5
 
 
 class Table:
@@ -33,39 +34,54 @@ class TextColor:
 
 
 class Cursor:
-    # TODO
     # CLEAR_LINE = "\033[2K\r"  # clear last line and put cursor at the beginning
-    CLEAR_LINE = "\033[0J\r"  # clear last line and put cursor at the beginning
+    CLEAR_ANIMATION = "\r\033[0J"  # put cursor at the beginning and clear down
     HIDE_CURSOR = "\033[?25l"
     SHOW_CURSOR = "\033[?25h"
+    MOVE_CURSOR_UP = "\033[3A\r"  # moves three lines up
 
 
 class LogMessages:
     DELIMITER = "#########################################"
     FINALLY = "###########      FINALLY      ###########"
     STATES = [
-        ("<><", "><>", "<><", "><>"),
+        # ("<><", "><>", "<><", "><>"),
         (
-    r"""
-  /\_/\
- ( 0.0 )    
->>> ^ <<<""",
-    r"""
-  /\_/\
- ( 0._ )    
->>> ^ <<<""",
-    r"""
-  /\_/\
- ( 0.0 )    
->>> ^ <<<""",
-    r"""
-  /\_/\
- ( _.0 )    
->>> ^ <<<""",
+            "><({{*>       ",
+            " ><({{*>      ",
+            "  ><({{*>     ",
+            "   ><({{*>    ",
+            "    ><({{*>   ",
+            "     ><({{*>  ",
+            "      ><({{*> ",
+            "       ><({{*>",
+            "       <*}})><",
+            "      <*}})>< ",
+            "     <*}})><  ",
+            "    <*}})><   ",
+            "   <*}})><    ",
+            "  <*}})><     ",
+            " <*}})><      ",
+            "<*}})><       ",
         ),
-        ("\\", "|", "/", "-"),
-        ("▁▁▁", "▁▁▄", "▁▄█", "▄█▄", "█▄▁", "▄▁▁"),
-        ("⣾", "⣷", "⣯", "⣟", "⡿", "⢿", "⣻", "⣽"),
+        (
+            r"""
+  /\_/\       
+ ( 0.0 )      
+>>> ^ <<<     """,
+            r"""
+  /\_/\       
+ ( 0._ )      
+>>> ^ <<<     """,
+            r"""
+  /\_/\       
+ ( 0.0 )      
+>>> ^ <<<     """,
+            r"""
+  /\_/\       
+ ( _.0 )      
+>>> ^ <<<     """,
+        ),
     ]
 
     HEADER = r"""              ___

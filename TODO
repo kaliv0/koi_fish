@@ -1,0 +1,37 @@
+- fix logs in scenario:
+    run 'koi --skip foo -j foo bar'
+    if bar fails -> displays 'Failed jobs: [bar]; Skipped jobs: [foo]'
+    else -> displays 'All jobs succeeded! [bar]'
+    -> don't show foo in skipped -> or show skipped in both cases?
+
+- support flags inside config tables in .toml
+    -> -m, -s
+
+- add multiple flows/pipelines in suite table
+    -> run by name in shell
+    -> support in -d, -t flags
+    -> keep 'main' as default one? -> rename -t/--suite flag
+
+- add fail-fast mechanism -> currently 'finally' runs jobs from jobs_to_defer if not already in succeeded or failed states
+- all cli_jobs and deferred_jobs are sets
+    -> you cannot schedule twice e.g. teardown even if divided by other jobs in between
+    -> add flag to disable duplicate jobs?
+
+- run optional pre- and post-cmds (deps & cleanup) only if job run alone, but skip inside a pipeline?
+
+- support mechanism similar to makefile rules/pre-requisites e.g.
+    '''foo: bar
+        echo 'Hi!'''
+    -> opposite of --fail-fast -> pre-requisite tasks should never fail before running current one
+
+- use Logger instead of print in spinner()
+- fix naming -> jobs_to_defer vs property deferred_jobs
+
+- reorder semantically jobs passed to Runner()
+- support advanced configs e.g. variables, loops etc.
+- use shlex for parsing and building bash commands?
+
+- clear-up commented lines from constants.py
+- make animations in color
+
+
