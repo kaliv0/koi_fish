@@ -1,4 +1,4 @@
-from koi.constants import LogLevel
+from koi.constants import LogLevel, Font
 
 
 class Logger:
@@ -33,3 +33,7 @@ class Logger:
     @classmethod
     def _log(cls, level, msg, end="\n", flush=False):
         print(f"{level}{msg}{LogLevel.RESET}", end=end, flush=flush)
+
+    @staticmethod
+    def format_error_font(msg: str) -> str:
+        return f"{Font.ITALIC}{msg}{Font.RESET}{LogLevel.ERROR}"

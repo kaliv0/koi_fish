@@ -48,9 +48,9 @@ def get_command_line_args() -> Namespace:
         nargs="+",
         type=_job_checker,
         default=[],
-        dest="jobs_to_defer",  # TODO: rename
+        dest="jobs_to_defer",
         metavar="JOBS",
-        help="job(s) to run on close even if pipeline fails",  # TODO: change
+        help="job(s) to run on close if the pipeline fails (used with --fail-fast)",
     )
 
     run_group = parser.add_mutually_exclusive_group()

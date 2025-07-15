@@ -11,7 +11,7 @@ from itertools import chain
 from threading import Event
 from typing import TypeAlias
 
-from koi.constants import CONFIG_FILE, LogMessages, Table, Font, LogLevel
+from koi.constants import CONFIG_FILE, LogMessages, Table, Cursor, TextColor
 from koi.logger import Logger
 
 Job: TypeAlias = list[str] | str
@@ -49,13 +49,21 @@ class Runner:
         self.failed_jobs: list[str] = []
         self.is_successful: bool = False
         # used for spinner with --silent flag
-        self.supervisor: Event  # TODO: initialize here?
+        self.supervisor = Event()
 
     @cached_property
     def skipped_jobs(self) -> list[str]:
         return [
             job for job in self.all_jobs if job not in chain(self.failed_jobs, self.successful_jobs)
         ]
+
+    @cached_property
+    def deferred_jobs(self) -> dict[str, JobTable]:
+        return {
+            k: self.data[k]
+            for k in self.jobs_to_defer
+            if k not in chain(self.successful_jobs, self.failed_jobs)
+        }
 
     @cached_property
     def job_suite(self) -> dict[str, JobTable]:
@@ -87,27 +95,27 @@ class Runner:
         jobs = self.data[Table.RUN]
         if Table.MAIN not in jobs:
             Logger.error(
-                f"Error: missing key '{self.format_font(Table.MAIN)}' in '{self.format_font(Table.RUN)}' table"
+                f"Error: missing key '{Logger.format_error_font(Table.MAIN)}' in '{Logger.format_error_font(Table.RUN)}' table"
             )
             return False
         if not jobs[Table.MAIN]:
             Logger.error(
-                f"Error: '{self.format_font(f'{Table.RUN} {Table.MAIN}')}' cannot be empty"
+                f"Error: '{Logger.format_error_font(f'{Table.RUN} {Table.MAIN}')}' cannot be empty"
             )
             return False
         if not isinstance(jobs[Table.MAIN], list):
             Logger.error(
-                f"Error: '{self.format_font(f'{Table.RUN} {Table.MAIN}')}' must be of type list"
+                f"Error: '{Logger.format_error_font(f'{Table.RUN} {Table.MAIN}')}' must be of type list"
             )
             return False
         if Table.RUN in jobs[Table.MAIN]:
             Logger.error(
-                f"Error: '{self.format_font(f'{Table.RUN} {Table.MAIN}')}' cannot contain itself recursively"
+                f"Error: '{Logger.format_error_font(f'{Table.RUN} {Table.MAIN}')}' cannot contain itself recursively"
             )
             return False
         if invalid_jobs := [job for job in jobs[Table.MAIN] if job not in self.data]:
             Logger.error(
-                f"Error: '{self.format_font(f'{Table.RUN} {Table.MAIN}')}' contains invalid jobs: {invalid_jobs}"
+                f"Error: '{Logger.format_error_font(f'{Table.RUN} {Table.MAIN}')}' contains invalid jobs: {invalid_jobs}"
             )
             return False
         self.all_jobs = jobs[Table.MAIN]  # type: ignore ## 'main' is always list of str
@@ -173,10 +181,12 @@ class Runner:
         return bool(self.data)
 
     def validate_cli_jobs(self) -> bool:
-        if not self.cli_jobs:
+        if not (self.cli_jobs or self.jobs_to_defer):
             return True
-        # TODO: validate jobs_to_defer if not in data
-        if invalid_job := next((job for job in self.cli_jobs if job not in self.data), None):
+        if invalid_job := next(
+            (job for job in set(self.cli_jobs).union(self.jobs_to_defer) if job not in self.data),
+            None,
+        ):
             Logger.fail(f"'{invalid_job}' not found in jobs suite")
             return False
         return True
@@ -195,23 +205,31 @@ class Runner:
                 Logger.log(self.prepare_description_log(result))
 
     @staticmethod
-    def prepare_description_log(data):
+    def prepare_description_log(data: JobTable) -> str:
         result = []
         for key, val in data.items():
-            colored_key = f"\t\033[93m{key}\033[00m"
+            colored_key = f"\t{TextColor.YELLOW}{key}{TextColor.RESET}"
             if isinstance(val, list):
                 padding = " " * (len(key) + 2)
                 val = f"\n\t{padding}".join(val)
             result.append(f"{colored_key}: {val}")
         return "\n".join(result)
 
-    ############################################################################################
     def run_jobs(self) -> None:
         if not self.job_suite:
             return
 
-        is_run_successful = True
-        for i, (table, table_entries) in enumerate(self.job_suite.items()):
+        is_run_successful = self.run_sub_flow(is_run_successful=True, is_main_flow=True)
+        if self.fail_fast and self.jobs_to_defer:
+            Logger.log(LogMessages.FINALLY)
+            is_run_successful = self.run_sub_flow(
+                is_run_successful=is_run_successful, is_main_flow=False
+            )
+        self.is_successful = is_run_successful
+
+    def run_sub_flow(self, is_run_successful, is_main_flow) -> bool:
+        suite = self.get_suite(is_main_flow)
+        for i, (table, table_entries) in enumerate(suite.items()):
             if i > 0:
                 Logger.log(LogMessages.DELIMITER)
             Logger.start(f"{table.upper()}:")
@@ -219,7 +237,7 @@ class Runner:
 
             if not (cmds := self.build_commands_list(table, table_entries)):
                 is_run_successful = False
-                if self.fail_fast:
+                if is_main_flow and self.fail_fast:
                     break
                 else:
                     continue
@@ -229,53 +247,24 @@ class Runner:
             if not is_job_successful:
                 self.failed_jobs.append(table)
                 Logger.error(f"{table.upper()} failed")
-                if self.fail_fast:
+                if is_main_flow and self.fail_fast:
                     break
             else:
                 stop = time.perf_counter()
                 Logger.success(f"{table.upper()} succeeded! Took:  {stop - start}")
                 self.successful_jobs.append(table)
+        return is_run_successful
 
-        if self.fail_fast and self.jobs_to_defer:
-            # TODO: extract and add validation for wrong keys
-            jobs = {
-                k: self.data[k]
-                for k in self.jobs_to_defer
-                if k not in chain(self.successful_jobs, self.failed_jobs)
-            }
-
-            Logger.log(LogMessages.DELIMITER)  # TODO: remove??
-            Logger.info(LogMessages.FINALLY)
-            for i, (table, table_entries) in enumerate(jobs.items()):
-                if i > 0:
-                    Logger.log(LogMessages.DELIMITER)
-                Logger.start(f"{table.upper()}:")
-                start = time.perf_counter()
-                if not (cmds := self.build_commands_list(table, table_entries)):
-                    is_run_successful = False
-                    continue
-
-                is_job_successful = self.execute_shell_commands(cmds, i)
-                is_run_successful &= is_job_successful
-                if not is_job_successful:
-                    self.failed_jobs.append(table)
-                    Logger.error(f"{table.upper()} failed")
-                else:
-                    stop = time.perf_counter()
-                    Logger.success(f"{table.upper()} succeeded! Took:  {stop - start}")
-                    self.successful_jobs.append(table)
-
-        self.is_successful = is_run_successful
-
-    ############################################################################################
+    def get_suite(self, is_main_flow) -> dict[str, JobTable]:
+        if is_main_flow:
+            return self.job_suite
+        return self.deferred_jobs
 
     def build_commands_list(self, table: str, table_entries: JobTable) -> list[str]:
         cmds: list[str] = []
         for names in (Table.PRE_RUN, Table.COMMANDS, Table.POST_RUN):
             cmd, cmd_is_invalid = self.get_command(table_entries, names)
-            entry_msg = (
-                f"'{self.format_font('|'.join(names))}' entry in '{self.format_font(table)}' table"
-            )
+            entry_msg = f"'{Logger.format_error_font('|'.join(names))}' entry in '{Logger.format_error_font(table)}' table"
             if cmd_is_invalid:
                 self.failed_jobs.append(table)
                 Logger.error(f"Error: duplicate {entry_msg}")
@@ -290,7 +279,6 @@ class Runner:
 
     @staticmethod
     def get_command(table_entries: JobTable, table_names: set[str]) -> tuple[Job | None, bool]:
-        # TODO: refactor
         cmd = None
         for name in table_names:
             if (entry := table_entries.get(name, None)) is not None:
@@ -306,22 +294,22 @@ class Runner:
         else:
             cmds_list.append(cmd)
 
-    @staticmethod
-    def format_font(msg: str) -> str:
-        # TODO: move to logger.py??
-        return f"{Font.ITALIC}{msg}{Font.RESET}{LogLevel.ERROR}"
-
     def execute_shell_commands(self, cmds: list[str], i: int) -> bool:
         if self.silent_logs:
-            self.supervisor = Event()
+            self.reset_event()
             with ThreadPoolExecutor(2) as executor:
                 with self.shell_manager(cmds):
                     executor.submit(self.spinner, i)
+                    # time.sleep(2)  # TODO
                     status = self.run_subprocess(cmds)
             return status
         else:
             with self.shell_manager(cmds):
                 return self.run_subprocess(cmds)
+
+    def reset_event(self) -> None:
+        if self.supervisor.is_set():
+            self.supervisor.clear()
 
     @contextmanager
     def shell_manager(self, cmds: list[str]):
@@ -332,23 +320,21 @@ class Runner:
         except KeyboardInterrupt:
             if self.silent_logs:
                 self.supervisor.set()
-                # TODO: move code to consts
-            Logger.error("\033[2K\rHey, I was in the middle of somethin' here!")
+            Logger.error(f"{Cursor.CLEAR_LINE}Hey, I was in the middle of somethin' here!")
             sys.exit()
         else:
             if self.silent_logs:
                 self.supervisor.set()
 
     def spinner(self, i: int) -> None:
-        # TODO: refactor using logger?
         msg = "Keep fishin'!"
-        print("\033[?25l", end="")  # hide blinking cursor
+        print(Cursor.HIDE_CURSOR, end="")
         for ch in itertools.cycle(LogMessages.STATES[i % 3]):
             print(f"\r{ch} {msg} {ch}", end="", flush=True)
             if self.supervisor.wait(0.1):
                 break
-        print("\033[2K\r", end="")  # clear last line and put cursor at the beginning
-        print("\033[?25h", end="")  # make cursor visible
+        print(Cursor.CLEAR_LINE, end="")
+        print(Cursor.SHOW_CURSOR, end="")
 
     def run_subprocess(self, cmds: list[str]) -> bool:
         with subprocess.Popen(
