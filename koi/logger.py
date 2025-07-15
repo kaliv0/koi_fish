@@ -32,4 +32,4 @@ class Logger:
 
     @classmethod
     def _log(cls, level, msg, end="\n", flush=False):
-        print(f"\033[{level}m{msg}\033[00m", end=end, flush=flush)
+        print(f"{level}{msg}{LogLevel.RESET}", end=end, flush=flush)

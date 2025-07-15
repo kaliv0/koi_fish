@@ -36,6 +36,22 @@ def get_command_line_args() -> Namespace:
         metavar="JOBS",
         help="skip job(s) from config file",
     )
+    parser.add_argument(
+        "-f",
+        "--fail-fast",
+        action="store_true",
+        default=False,
+        help="cancel pipeline if a job fails",
+    )
+    parser.add_argument(
+        "--finally",
+        nargs="+",
+        type=_job_checker,
+        default=[],
+        dest="jobs_to_defer",  # TODO: rename
+        metavar="JOBS",
+        help="job(s) to run on close even if pipeline fails",  # TODO: change
+    )
 
     run_group = parser.add_mutually_exclusive_group()
     run_group.add_argument(
@@ -100,6 +116,8 @@ def main():
         args.run_all,
         args.silent_logs,
         args.mute_commands,
+        args.fail_fast,
+        args.jobs_to_defer,
         args.display_suite,
         args.display_all,
         args.jobs_to_describe,

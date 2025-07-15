@@ -10,16 +10,25 @@ class Table:
 
 
 class LogLevel:
-    ERROR = 91
-    SUCCESS = 92
-    START = 93
-    FAIL = 94
-    DEBUG = 95
-    INFO = 96
+    RESET = "\033[00m"
+    ERROR = "\033[91m"  # red
+    SUCCESS = "\033[92m"  # green
+    START = "\033[93m"  # yellow
+    FAIL = "\033[94m"  # blue
+    DEBUG = "\033[95m"  # purple
+    INFO = "\033[96m"  # light blue
+
+
+class Font:
+    RESET = "\033[0m"
+    # BOLD = "\033[1m"
+    ITALIC = "\033[3m"
+    # UNDERLINE = "\033[4m"
 
 
 class LogMessages:
     DELIMITER = "#########################################"
+    FINALLY = "###########      FINALLY      ###########"
     STATES = [
         ("\\", "|", "/", "-"),
         ("▁▁▁", "▁▁▄", "▁▄█", "▄█▄", "█▄▁", "▄▁▁"),
