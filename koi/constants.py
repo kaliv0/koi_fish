@@ -1,5 +1,6 @@
-CONFIG_FILE = "koi.toml"
-SPINNER_TIMEOUT = 0.5
+class CommonConfig:  # TODO: rename
+    CONFIG_FILE = "koi.toml"
+    SPINNER_TIMEOUT = 0.5
 
 
 class Table:
@@ -22,9 +23,9 @@ class LogLevel:
 
 class Font:
     RESET = "\033[0m"
-    # BOLD = "\033[1m"
+    BOLD = "\033[1m"
     ITALIC = "\033[3m"
-    # UNDERLINE = "\033[4m"
+    UNDERLINE = "\033[4m"
 
 
 class TextColor:
@@ -34,7 +35,7 @@ class TextColor:
 
 
 class Cursor:
-    # CLEAR_LINE = "\033[2K\r"  # clear last line and put cursor at the beginning
+    CLEAR_LINE = "\033[2K\r"  # clear last line and put cursor at the beginning
     CLEAR_ANIMATION = "\r\033[0J"  # put cursor at the beginning and clear down
     HIDE_CURSOR = "\033[?25l"
     SHOW_CURSOR = "\033[?25h"
@@ -44,8 +45,7 @@ class Cursor:
 class LogMessages:
     DELIMITER = "#########################################"
     FINALLY = "###########      FINALLY      ###########"
-    STATES = [
-        # ("<><", "><>", "<><", "><>"),
+    ANIMATIONS = [
         (
             "><({{*>       ",
             " ><({{*>      ",

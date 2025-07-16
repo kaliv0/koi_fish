@@ -11,7 +11,7 @@ from itertools import chain
 from threading import Event
 from typing import TypeAlias
 
-from koi.constants import CONFIG_FILE, LogMessages, Table, Cursor, TextColor, SPINNER_TIMEOUT
+from koi.constants import CommonConfig, LogMessages, Table, Cursor, TextColor
 from koi.logger import Logger
 
 Job: TypeAlias = list[str] | str
@@ -133,7 +133,7 @@ class Runner:
     def print_header(self) -> None:
         if not self.should_display_stats or self.should_display_job_info:
             return
-        if self.run_full_pipeline:  # and not self.silent_logs:  # TODO
+        if self.run_full_pipeline and not self.silent_logs:
             Logger.info(LogMessages.HEADER)
         else:
             Logger.info("Let's go!")
@@ -166,7 +166,7 @@ class Runner:
         self.run_jobs()
 
     def handle_config_file(self) -> bool:
-        config_path = os.path.join(os.getcwd(), CONFIG_FILE)
+        config_path = os.path.join(os.getcwd(), CommonConfig.CONFIG_FILE)
         if not os.path.exists(config_path):
             Logger.fail("Config file not found")
             return False
@@ -327,14 +327,14 @@ class Runner:
                 self.supervisor.set()
 
     def spinner(self, i: int) -> None:
-        animation_idx = i % 2
+        animation_idx = i % len(LogMessages.ANIMATIONS)
         msg = "Keep fishin'!"
         print(Cursor.HIDE_CURSOR, end="")
-        for ch in itertools.cycle(LogMessages.STATES[animation_idx]):
+        for ch in itertools.cycle(LogMessages.ANIMATIONS[animation_idx]):
             print(f"\r{ch}\t{msg}", end="", flush=True)
             if animation_idx > 0:
                 print(Cursor.MOVE_CURSOR_UP, end="")
-            if self.supervisor.wait(SPINNER_TIMEOUT):
+            if self.supervisor.wait(CommonConfig.SPINNER_TIMEOUT):
                 break
         print(Cursor.CLEAR_ANIMATION, end="")
         print(Cursor.SHOW_CURSOR, end="")

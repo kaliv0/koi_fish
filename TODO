@@ -12,26 +12,27 @@
     -> support in -d, -t flags
     -> keep 'main' as default one? -> rename -t/--suite flag
 
-- add fail-fast mechanism -> currently 'finally' runs jobs from jobs_to_defer if not already in succeeded or failed states
-- all cli_jobs and deferred_jobs are sets
+- fail-fast mechanism -> currently 'finally' runs jobs from jobs_to_defer if not already in succeeded or failed states
+-- all cli_jobs and deferred_jobs are sets
     -> you cannot schedule twice e.g. teardown even if divided by other jobs in between
-    -> add flag to disable duplicate jobs?
+    -> add flag to disable de-duplicating jobs?
 
 - run optional pre- and post-cmds (deps & cleanup) only if job run alone, but skip inside a pipeline?
 
 - support mechanism similar to makefile rules/pre-requisites e.g.
     '''foo: bar
-        echo 'Hi!'''
+          echo 'Hi!'''
     -> opposite of --fail-fast -> pre-requisite tasks should never fail before running current one
 
 - use Logger instead of print in spinner()
 - fix naming -> jobs_to_defer vs property deferred_jobs
 
 - reorder semantically jobs passed to Runner()
-- support advanced configs e.g. variables, loops etc.
-- use shlex for parsing and building bash commands?
+- rename jobs to tasks?
 
-- clear-up commented lines from constants.py
-- make animations in color
-
+==================================
+add to README
+- --fail-fast & --finally flags
+- renamed config table entries -> short/long
+    -> pre, cmd, post, main, info
 
