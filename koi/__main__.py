@@ -30,7 +30,7 @@ def get_command_line_args() -> Namespace:
     parser.add_argument(
         "--skip",
         nargs="+",
-        type=_job_checker,
+        type=job_checker,
         default=[],
         dest="jobs_to_omit",
         metavar="JOBS",
@@ -46,7 +46,7 @@ def get_command_line_args() -> Namespace:
     parser.add_argument(
         "--finally",
         nargs="+",
-        type=_job_checker,
+        type=job_checker,
         default=[],
         dest="jobs_to_defer",
         metavar="JOBS",
@@ -64,7 +64,7 @@ def get_command_line_args() -> Namespace:
         "-j",
         "--jobs",
         nargs="+",
-        type=_job_checker,
+        type=job_checker,
         default=[],
         dest="cli_jobs",
         metavar="JOBS",
@@ -108,7 +108,7 @@ def get_command_line_args() -> Namespace:
     return parser.parse_args()
 
 
-def _job_checker(job: str) -> str:
+def job_checker(job: str) -> str:
     if job == Table.RUN:
         raise ArgumentTypeError(f'Invalid job: "{Table.RUN}"')
     return job

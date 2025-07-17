@@ -317,7 +317,7 @@ class Runner:
             with ThreadPoolExecutor(2) as executor:
                 with self.shell_manager(cmds):
                     executor.submit(self.spinner, i)
-                    # time.sleep(7)  # TODO
+                    time.sleep(7)  # TODO
                     status = self.run_subprocess(cmds)
             return status
         else:
@@ -346,15 +346,15 @@ class Runner:
     def spinner(self, i: int) -> None:
         animation_idx = i % len(LogMessages.ANIMATIONS)
         msg = "Keep fishin'!"
-        print(Cursor.HIDE_CURSOR, end="")
+        Logger.animate(Cursor.HIDE_CURSOR)
         for ch in itertools.cycle(LogMessages.ANIMATIONS[animation_idx]):
-            print(f"\r{ch}\t{msg}", end="", flush=True)
+            Logger.animate(f"\r{ch}\t{msg}", flush=True)
             if animation_idx > 0:
-                print(Cursor.MOVE_CURSOR_UP, end="")
+                Logger.animate(Cursor.MOVE_CURSOR_UP)
             if self.supervisor.wait(CommonConfig.SPINNER_TIMEOUT):
                 break
-        print(Cursor.CLEAR_ANIMATION, end="")
-        print(Cursor.SHOW_CURSOR, end="")
+        Logger.animate(Cursor.CLEAR_ANIMATION)
+        Logger.animate(Cursor.SHOW_CURSOR)
 
     def run_subprocess(self, cmds: list[str]) -> bool:
         with subprocess.Popen(

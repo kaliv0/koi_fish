@@ -34,6 +34,10 @@ class Logger:
     def _log(cls, level, msg, end="\n", flush=False):
         print(f"{level}{msg}{LogLevel.RESET}", end=end, flush=flush)
 
+    @classmethod
+    def animate(cls, msg, end="", flush=False):
+        print(msg, end=end, flush=flush)
+
     @staticmethod
     def format_error_font(msg: str) -> str:
         return f"{Font.ITALIC}{msg}{Font.RESET}{LogLevel.ERROR}"

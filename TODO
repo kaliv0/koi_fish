@@ -7,13 +7,10 @@
 
 - add multiple flows/pipelines in suite table
     -> run by name in shell
-    -> support in -d, -t flags
+    -> support in -d, -t flags -> describe and run flows
     -> keep 'main' as default one? -> rename -t/--suite flag
 
 - fail-fast mechanism -> currently 'finally' runs jobs from jobs_to_defer if not already in succeeded or failed states
--- all cli_jobs and deferred_jobs are sets
-    -> you cannot schedule twice e.g. teardown even if divided by other jobs in between
-    -> add flag to disable de-duplicating jobs?
 
 - run optional pre- and post-cmds (deps & cleanup) only if job run alone, but skip inside a pipeline?
 
@@ -22,7 +19,6 @@
           echo 'Hi!'''
     -> opposite of --fail-fast -> pre-requisite tasks should never fail before running current one
 
-- use Logger instead of print in spinner()
 - fix naming -> jobs_to_defer vs property deferred_jobs
 
 - reorder semantically jobs passed to Runner()
