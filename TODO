@@ -5,11 +5,6 @@
 - support flags inside config tables in .toml
     -> -m, -s
 
-- add multiple flows/pipelines in suite table
-    -> run by name in shell
-    -> support in -d, -t flags -> describe and run flows
-    -> keep 'main' as default one? -> rename -t/--suite flag
-
 - fail-fast mechanism -> currently 'finally' runs jobs from jobs_to_defer if not already in succeeded or failed states
 
 - run optional pre- and post-cmds (deps & cleanup) only if job run alone, but skip inside a pipeline?
@@ -22,14 +17,17 @@
 - fix naming -> jobs_to_defer vs property deferred_jobs
 
 - reorder semantically jobs passed to Runner()
-- rename jobs to tasks?
+
+- rename jobs to tasks? / suite to flow/pipeline?
+- add missing types to args.parameters
 
 - add tests -> use simple shell commands (echo, false, > /dev/full)
 
 - add type hints for shell_manager (contextmanager)
 ==================================
 add to README
-- flags: --fail-fast, --finally, --allow-duplicates
+- flags: --fail-fast, --finally, --allow-duplicates, -t (describe suite), -r (run suite)
+    -> renamed flags
 - renamed config table entries -> short/long
     -> pre, cmd, post, main, info
 

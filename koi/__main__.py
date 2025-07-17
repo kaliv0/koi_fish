@@ -72,6 +72,13 @@ def get_command_line_args() -> Namespace:
     )
     run_group.add_argument(
         "-r",
+        "--run",
+        dest="suite_to_run",
+        metavar="SUITE",
+        help="run job(s) from given 'suite' table",
+    )
+    run_group.add_argument(
+        # "-r",
         "--run-all",
         action="store_true",
         default=False,
@@ -87,13 +94,13 @@ def get_command_line_args() -> Namespace:
         dest="display_all",
         help="display all jobs from config",
     )
+    # TODO: refactor -> 'suite' already renamed to 'main' -> should work for all flows -> show 'main' if no param is passed?
     info_group.add_argument(
         "-t",
         "--suite",
-        action="store_true",
-        default=False,
-        dest="display_suite",
-        help="display all jobs from 'suite' table",
+        dest="suite_to_describe",
+        metavar="SUITE",
+        help="display all jobs from given 'suite' table",
     )
     info_group.add_argument(
         "-d",
@@ -119,13 +126,14 @@ def main():
     Runner(
         args.cli_jobs,
         args.jobs_to_omit,
+        args.suite_to_run,
         args.run_all,
         args.silent_logs,
         args.mute_commands,
         args.fail_fast,
         args.jobs_to_defer,
         args.allow_duplicates,
-        args.display_suite,
         args.display_all,
         args.jobs_to_describe,
+        args.suite_to_describe,
     ).run()

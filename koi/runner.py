@@ -22,27 +22,29 @@ class Runner:
         self,
         cli_jobs: list[str],
         jobs_to_omit: list[str],
+        suite_to_run: str,
         run_all: bool,
         silent_logs: bool,
         mute_commands: bool,
         fail_fast: bool,
         jobs_to_defer: list[str],
         allow_duplicates: bool,
-        display_suite: bool,
         display_all: bool,
         jobs_to_describe: list[str],
+        suite_to_describe: str,
     ) -> None:
         self.cli_jobs = cli_jobs
         self.jobs_to_omit = jobs_to_omit
+        self.suite_to_run = suite_to_run
         self.run_all = run_all
         self.silent_logs = silent_logs
         self.mute_commands = mute_commands
         self.fail_fast = fail_fast
         self.jobs_to_defer = jobs_to_defer
         self.allow_duplicates = allow_duplicates
-        self.display_suite = display_suite
         self.display_all = display_all
         self.jobs_to_describe = jobs_to_describe
+        self.suite_to_describe = suite_to_describe
 
         self.data: dict[str, JobTable] = {}
         self.all_jobs: list[str] = []
@@ -67,14 +69,23 @@ class Runner:
     @cached_property
     def job_suite(self) -> list[tuple[str, JobTable]]:
         if self.cli_jobs:
+            # -j/--job flag
             self.all_jobs = self.cli_jobs
         elif self.run_all:
+            # --run-all
             self.all_jobs = [job for job in self.data if job != Table.RUN]
+        elif suite := self.suite_to_describe or self.suite_to_run:
+            # -t or -r
+            is_successful = self.prepare_all_jobs_from_config(suite)  # noqa
+            if not is_successful:
+                return []
         elif Table.RUN in self.data:
-            is_successful = self.prepare_all_jobs_from_config()
+            # no flag
+            is_successful = self.prepare_all_jobs_from_config(Table.MAIN)
             if not is_successful:
                 return []
         else:
+            # no flag and no 'main' suite in config
             self.all_jobs = list(self.data)
         return self.prepare_job_suite()
 
@@ -101,41 +112,42 @@ class Runner:
         return not self.cli_jobs or len(self.cli_jobs) > 1
 
     @property
-    def should_display_job_info(self) -> bool:
-        return self.display_suite or self.display_all or bool(self.jobs_to_describe)
+    def should_display_info(self) -> bool:
+        # make mypy less annoying
+        return self.display_all or bool(self.jobs_to_describe) or bool(self.suite_to_describe)
 
     @property
     def run_full_pipeline(self) -> bool:
         return not self.cli_jobs or self.run_all
 
-    def prepare_all_jobs_from_config(self) -> bool:
-        jobs = self.data[Table.RUN]
-        if Table.MAIN not in jobs:
+    def prepare_all_jobs_from_config(self, suite: str) -> bool:
+        run_entries = self.data[Table.RUN]
+        if suite not in run_entries:
             Logger.error(
-                f"Error: missing key '{Logger.format_error_font(Table.MAIN)}' in '{Logger.format_error_font(Table.RUN)}' table"
+                f"Error: missing key '{Logger.format_error_font(suite)}' in '{Logger.format_error_font(Table.RUN)}' table"
             )
             return False
-        if not jobs[Table.MAIN]:
+        if not run_entries[suite]:
             Logger.error(
-                f"Error: '{Logger.format_error_font(f'{Table.RUN} {Table.MAIN}')}' cannot be empty"
+                f"Error: '{Logger.format_error_font(f'{Table.RUN} {suite}')}' cannot be empty"
             )
             return False
-        if not isinstance(jobs[Table.MAIN], list):
+        if not isinstance(run_entries[suite], list):
             Logger.error(
-                f"Error: '{Logger.format_error_font(f'{Table.RUN} {Table.MAIN}')}' must be of type list"
+                f"Error: '{Logger.format_error_font(f'{Table.RUN} {suite}')}' must be of type list"
             )
             return False
-        if Table.RUN in jobs[Table.MAIN]:
+        if Table.RUN in run_entries[suite]:
             Logger.error(
-                f"Error: '{Logger.format_error_font(f'{Table.RUN} {Table.MAIN}')}' cannot contain itself recursively"
+                f"Error: '{Logger.format_error_font(f'{Table.RUN} {suite}')}' cannot contain itself recursively"
             )
             return False
-        if invalid_jobs := [job for job in jobs[Table.MAIN] if job not in self.data]:
+        if invalid_jobs := [job for job in run_entries[suite] if job not in self.data]:
             Logger.error(
-                f"Error: '{Logger.format_error_font(f'{Table.RUN} {Table.MAIN}')}' contains invalid jobs: {invalid_jobs}"
+                f"Error: '{Logger.format_error_font(f'{Table.RUN} {suite}')}' contains invalid jobs: {invalid_jobs}"
             )
             return False
-        self.all_jobs = jobs[Table.MAIN]  # type: ignore ## 'main' is always list of str
+        self.all_jobs = run_entries[suite]  # type: ignore ## 'main' is always list of str
         return True
 
     ### main flow ###
@@ -148,7 +160,7 @@ class Runner:
             self.log_stats(total_time=(global_stop - global_start))
 
     def print_header(self) -> None:
-        if not self.should_display_stats or self.should_display_job_info:
+        if not self.should_display_stats or self.should_display_info:
             return
         if self.run_full_pipeline and not self.silent_logs:
             Logger.info(LogMessages.HEADER)
@@ -177,8 +189,8 @@ class Runner:
         if not (self.handle_config_file() and self.validate_cli_jobs()):
             Logger.fail("Run failed")
             sys.exit(1)
-        if self.display_suite or self.display_all or self.jobs_to_describe:
-            self.display_jobs_info()
+        if self.should_display_info:
+            self.display_info()
             sys.exit()
         self.run_jobs()
 
@@ -187,10 +199,10 @@ class Runner:
         if not os.path.exists(config_path):
             Logger.fail("Config file not found")
             return False
-        if not os.path.getsize(config_path):
+        if not (os.path.getsize(config_path) and self.read_config_file(config_path)):
             Logger.fail("Empty config file")
             return False
-        return self.read_config_file(config_path)
+        return True
 
     def read_config_file(self, config_path: str) -> bool:
         with open(config_path, "rb") as f:
@@ -208,8 +220,8 @@ class Runner:
             return False
         return True
 
-    def display_jobs_info(self) -> None:
-        if self.display_suite:
+    def display_info(self) -> None:
+        if self.suite_to_describe:
             Logger.log([job for job, _ in self.job_suite])
         elif self.display_all:
             Logger.log([job for job in self.data])
@@ -317,7 +329,7 @@ class Runner:
             with ThreadPoolExecutor(2) as executor:
                 with self.shell_manager(cmds):
                     executor.submit(self.spinner, i)
-                    time.sleep(7)  # TODO
+                    # time.sleep(2)  # TODO
                     status = self.run_subprocess(cmds)
             return status
         else:
