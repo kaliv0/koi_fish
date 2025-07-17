@@ -236,12 +236,14 @@ class Runner:
     @staticmethod
     def prepare_description_log(data: JobTable) -> str:
         result = []
+        longest_key = max(data, key=len)
+        padding = " " * (len(longest_key) + 2)
         for key, val in data.items():
             colored_key = f"\t{TextColor.YELLOW}{key}{TextColor.RESET}"
             if isinstance(val, list):
-                padding = " " * (len(key) + 2)
                 val = f"\n\t{padding}".join(val)
-            result.append(f"{colored_key}: {val}")
+            first_job_padding = " " * (len(padding) - len(key) - 1)
+            result.append(f"{colored_key}:{first_job_padding}{val}")
         return "\n".join(result)
 
     def run_jobs(self) -> None:
