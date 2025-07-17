@@ -1,8 +1,6 @@
-- fix logs in scenario:
-    run 'koi --skip foo -j foo bar'
-    if bar fails -> displays 'Failed jobs: [bar]; Skipped jobs: [foo]'
-    else -> displays 'All jobs succeeded! [bar]'
-    -> don't show foo in skipped -> or show skipped in both cases?
+- fix logs
+    --suite -> if there are duplicates in config -> only shown with --allow-duplicates flag
+    --finally -> deferred_jobs are put in the common 'successful jobs' list -> separate them?
 
 - support flags inside config tables in .toml
     -> -m, -s
@@ -30,9 +28,12 @@
 - reorder semantically jobs passed to Runner()
 - rename jobs to tasks?
 
+- add tests -> use simple shell commands (echo, false, > /dev/full)
+
+- add type hints for shell_manager (contextmanager)
 ==================================
 add to README
-- --fail-fast & --finally flags
+- flags: --fail-fast, --finally, --allow-duplicates
 - renamed config table entries -> short/long
     -> pre, cmd, post, main, info
 

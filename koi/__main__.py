@@ -52,6 +52,12 @@ def get_command_line_args() -> Namespace:
         metavar="JOBS",
         help="job(s) to run on close if the pipeline fails (used with --fail-fast)",
     )
+    parser.add_argument(
+        "--allow-duplicates",
+        action="store_true",
+        default=False,
+        help="allow duplicate jobs in pipeline",
+    )
 
     run_group = parser.add_mutually_exclusive_group()
     run_group.add_argument(
@@ -118,6 +124,7 @@ def main():
         args.mute_commands,
         args.fail_fast,
         args.jobs_to_defer,
+        args.allow_duplicates,
         args.display_suite,
         args.display_all,
         args.jobs_to_describe,

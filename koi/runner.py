@@ -7,7 +7,6 @@ import tomllib
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from functools import cached_property
-from itertools import chain
 from threading import Event
 from typing import TypeAlias
 
@@ -28,6 +27,7 @@ class Runner:
         mute_commands: bool,
         fail_fast: bool,
         jobs_to_defer: list[str],
+        allow_duplicates: bool,
         display_suite: bool,
         display_all: bool,
         jobs_to_describe: list[str],
@@ -39,6 +39,7 @@ class Runner:
         self.mute_commands = mute_commands
         self.fail_fast = fail_fast
         self.jobs_to_defer = jobs_to_defer
+        self.allow_duplicates = allow_duplicates
         self.display_suite = display_suite
         self.display_all = display_all
         self.jobs_to_describe = jobs_to_describe
@@ -54,19 +55,17 @@ class Runner:
     @cached_property
     def skipped_jobs(self) -> list[str]:
         return [
-            job for job in self.all_jobs if job not in chain(self.failed_jobs, self.successful_jobs)
+            job
+            for job in self.all_jobs
+            if job not in itertools.chain(self.successful_jobs, self.failed_jobs, self.jobs_to_omit)
         ]
 
     @cached_property
-    def deferred_jobs(self) -> dict[str, JobTable]:
-        return {
-            k: self.data[k]
-            for k in self.jobs_to_defer
-            if k not in chain(self.successful_jobs, self.failed_jobs)
-        }
+    def deferred_jobs(self) -> list[tuple[str, JobTable]]:
+        return self.prepare_job_suite(is_deferred=True)
 
     @cached_property
-    def job_suite(self) -> dict[str, JobTable]:
+    def job_suite(self) -> list[tuple[str, JobTable]]:
         if self.cli_jobs:
             self.all_jobs = self.cli_jobs
         elif self.run_all:
@@ -74,10 +73,28 @@ class Runner:
         elif Table.RUN in self.data:
             is_successful = self.prepare_all_jobs_from_config()
             if not is_successful:
-                return {}
+                return []
         else:
             self.all_jobs = list(self.data)
-        return {k: self.data[k] for k in self.all_jobs if k not in self.jobs_to_omit}
+        return self.prepare_job_suite()
+
+    def prepare_job_suite(self, is_deferred: bool = False) -> list[tuple[str, JobTable]]:
+        jobs_list, skip_list = self.get_job_lists(is_deferred)
+        job_suite = []
+        added_jobs = set()
+        for job in jobs_list:
+            if job in skip_list or (job in added_jobs and not self.allow_duplicates):
+                continue
+            job_suite.append((job, self.data[job]))
+            added_jobs.add(job)
+        return job_suite
+
+    def get_job_lists(
+        self, is_deferred: bool
+    ) -> tuple[list[str], list[str] | itertools.chain[str]]:
+        if is_deferred:
+            return self.jobs_to_defer, itertools.chain(self.successful_jobs, self.failed_jobs)
+        return self.all_jobs, self.jobs_to_omit
 
     @property
     def should_display_stats(self) -> bool:
@@ -193,7 +210,7 @@ class Runner:
 
     def display_jobs_info(self) -> None:
         if self.display_suite:
-            Logger.log([job for job in self.job_suite])
+            Logger.log([job for job, _ in self.job_suite])
         elif self.display_all:
             Logger.log([job for job in self.data])
         elif self.jobs_to_describe:
@@ -227,9 +244,9 @@ class Runner:
             )
         self.is_successful = is_run_successful
 
-    def run_sub_flow(self, is_run_successful, is_main_flow) -> bool:
-        suite = self.get_suite(is_main_flow)
-        for i, (table, table_entries) in enumerate(suite.items()):
+    def run_sub_flow(self, is_run_successful: bool, is_main_flow: bool) -> bool:
+        suite = self.get_subflow_suite(is_main_flow)
+        for i, (table, table_entries) in enumerate(suite):
             if i > 0:
                 Logger.log(LogMessages.DELIMITER)
             Logger.start(f"{table.upper()}:")
@@ -255,7 +272,7 @@ class Runner:
                 self.successful_jobs.append(table)
         return is_run_successful
 
-    def get_suite(self, is_main_flow) -> dict[str, JobTable]:
+    def get_subflow_suite(self, is_main_flow: bool) -> list[tuple[str, JobTable]]:
         if is_main_flow:
             return self.job_suite
         return self.deferred_jobs
@@ -300,7 +317,7 @@ class Runner:
             with ThreadPoolExecutor(2) as executor:
                 with self.shell_manager(cmds):
                     executor.submit(self.spinner, i)
-                    time.sleep(7)  # TODO
+                    # time.sleep(7)  # TODO
                     status = self.run_subprocess(cmds)
             return status
         else:
