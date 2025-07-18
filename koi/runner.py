@@ -157,12 +157,19 @@ class Runner:
 
     ### main flow ###
     def run(self) -> None:
-        global_start = time.perf_counter()
-        self.print_header()
-        self.run_stages()
-        global_stop = time.perf_counter()
-        if self.should_display_stats:
-            self.log_stats(total_time=(global_stop - global_start))
+        with self.timer():
+            self.print_header()
+            self.run_stages()
+
+    @contextmanager
+    def timer(self):
+        start = time.perf_counter()
+        try:
+            yield
+        finally:
+            stop = time.perf_counter()
+            if self.should_display_stats:
+                self.log_stats(total_time=(stop - start))
 
     def print_header(self) -> None:
         if not self.should_display_stats or self.should_display_info:
