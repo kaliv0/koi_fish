@@ -14,15 +14,7 @@
           echo 'Hi!'''
     -> opposite of --fail-fast -> pre-requisite tasks should never fail before running current one
 
-- fix naming -> tasks_to_defer vs property deferred_tasks
-
-- reorder semantically tasks passed to Runner()
-
-- remove/change short flags with CAPS
-
 - currently you cannot use '-t run', but you describe 'run' table with -d as if it's a task??
-
-- add missing types to args.parameters
 
 - add tests -> use simple shell commands (echo, false, > /dev/full)
 

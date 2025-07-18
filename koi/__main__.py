@@ -138,3 +138,7 @@ def main():
         args.tasks_to_describe,
         args.flow_to_describe,
     ).run()
+
+
+if __name__ == "__main__":
+    main()

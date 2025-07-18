@@ -4,6 +4,7 @@ import subprocess
 import sys
 import time
 import tomllib
+from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from functools import cached_property
@@ -101,11 +102,14 @@ class Runner:
             added_tasks.add(task)
         return task_flow
 
-    def get_task_lists(
-        self, is_deferred: bool
-    ) -> tuple[list[str], list[str] | itertools.chain[str]]:
+    def get_task_lists(self, is_deferred: bool) -> tuple[list[str], Iterable[str]]:
         if is_deferred:
-            return self.tasks_to_defer, itertools.chain(self.successful_tasks, self.failed_tasks)
+            skip_list = (
+                itertools.chain(self.successful_tasks, self.failed_tasks)
+                if not self.allow_duplicates
+                else []
+            )
+            return self.tasks_to_defer, skip_list
         return self.all_tasks, self.tasks_to_omit
 
     @property
