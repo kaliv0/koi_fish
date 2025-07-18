@@ -28,61 +28,63 @@ def get_command_line_args() -> Namespace:
         help="don't print shell commands",
     )
     parser.add_argument(
+        "-S",
         "--skip",
         nargs="+",
-        type=job_checker,
+        type=task_checker,
         default=[],
-        dest="jobs_to_omit",
-        metavar="JOBS",
-        help="skip job(s) from config file",
+        dest="tasks_to_omit",
+        metavar="TASK",
+        help="skip task(s) from config file",
     )
     parser.add_argument(
-        "-f",
+        "-F",
         "--fail-fast",
         action="store_true",
         default=False,
-        help="cancel pipeline if a job fails",
+        help="cancel flow if a task fails",
     )
     parser.add_argument(
         "--finally",
         nargs="+",
-        type=job_checker,
+        type=task_checker,
         default=[],
-        dest="jobs_to_defer",
-        metavar="JOBS",
-        help="job(s) to run on close if the pipeline fails (used with --fail-fast)",
+        dest="tasks_to_defer",
+        metavar="TASK",
+        help="task(s) to run on close if the flow fails (used with --fail-fast)",
     )
     parser.add_argument(
+        "-A",
         "--allow-duplicates",
         action="store_true",
         default=False,
-        help="allow duplicate jobs in pipeline",
+        help="allow duplicate tasks in flow",
     )
 
     run_group = parser.add_mutually_exclusive_group()
     run_group.add_argument(
-        "-j",
-        "--jobs",
+        "-t",
+        "--tasks",
         nargs="+",
-        type=job_checker,
+        type=task_checker,
         default=[],
-        dest="cli_jobs",
-        metavar="JOBS",
-        help="run selected job(s) from config",
+        dest="cli_tasks",
+        metavar="TASK",
+        help="run selected task(s) from config",
+    )
+    run_group.add_argument(
+        "-f",
+        "--flow",
+        dest="flow_to_run",
+        metavar="FLOW",
+        help="run task(s) from given 'flow' table",
     )
     run_group.add_argument(
         "-r",
-        "--run",
-        dest="suite_to_run",
-        metavar="SUITE",
-        help="run job(s) from given 'suite' table",
-    )
-    run_group.add_argument(
-        # "-r",
         "--run-all",
         action="store_true",
         default=False,
-        help="run all jobs from config",
+        help="run all tasks from config",
     )
 
     info_group = parser.add_mutually_exclusive_group()
@@ -92,48 +94,47 @@ def get_command_line_args() -> Namespace:
         action="store_true",
         default=False,
         dest="display_all",
-        help="display all jobs from config",
+        help="display all tasks from config",
     )
-    # TODO: refactor -> 'suite' already renamed to 'main' -> should work for all flows -> show 'main' if no param is passed?
     info_group.add_argument(
-        "-t",
-        "--suite",
-        dest="suite_to_describe",
-        metavar="SUITE",
-        help="display all jobs from given 'suite' table",
+        "-D",
+        "--describe-flow",
+        dest="flow_to_describe",
+        metavar="FLOW",
+        help="display all tasks from given 'flow' table",
     )
     info_group.add_argument(
         "-d",
         "--describe",
         nargs="+",
         default=[],
-        dest="jobs_to_describe",
-        metavar="JOBS",
-        help="display config for given job(s)",
+        dest="tasks_to_describe",
+        metavar="TASK",
+        help="display config for given task(s)",
     )
 
     return parser.parse_args()
 
 
-def job_checker(job: str) -> str:
-    if job == Table.RUN:
-        raise ArgumentTypeError(f'Invalid job: "{Table.RUN}"')
-    return job
+def task_checker(task: str) -> str:
+    if task == Table.RUN:
+        raise ArgumentTypeError(f'Invalid task: "{Table.RUN}"')
+    return task
 
 
 def main():
     args = get_command_line_args()
     Runner(
-        args.cli_jobs,
-        args.jobs_to_omit,
-        args.suite_to_run,
+        args.cli_tasks,
+        args.tasks_to_omit,
+        args.flow_to_run,
         args.run_all,
         args.silent_logs,
         args.mute_commands,
         args.fail_fast,
-        args.jobs_to_defer,
+        args.tasks_to_defer,
         args.allow_duplicates,
         args.display_all,
-        args.jobs_to_describe,
-        args.suite_to_describe,
+        args.tasks_to_describe,
+        args.flow_to_describe,
     ).run()

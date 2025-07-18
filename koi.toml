@@ -15,5 +15,5 @@ description = "remove venv and cache"
 commands = "rm -rf .venv/ .ruff_cache/ .mypy_cache/"
 
 [run]
-description = "jobs pipeline"
-suite = ["install", "format", "lint"]
+description = "tasks pipeline"
+flow = ["install", "format", "lint"]

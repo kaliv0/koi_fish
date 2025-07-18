@@ -12,7 +12,7 @@
 
 ---------------------------
 ### How to use
-- Describe jobs as tables/dictionaries in a config file called 'koi.toml'.
+- Describe tasks as tables/dictionaries in a config file called 'koi.toml'.
 <br>(Put the config inside the root directory of your project)
 ```toml
 [test]
@@ -31,10 +31,10 @@ commands = "echo 'Hello world'"
 commands = ["uv run ruff check", "uv run ruff format"]
 ```
 
-- You could provide a [run] table inside the config file with a <i>'suite'</i> - list of selected jobs to run
+- You could provide a [run] table inside the config file with a <i>'main'</i> flow - list of selected tasks to run
 ```toml
 [run]
-suite = ["lint", "format", "test"]
+main = ["lint", "format", "test"]
 ```
 ---------------------------
 Example <i>koi.toml</i> (used as a main automation tool during the development of this project)
@@ -56,8 +56,8 @@ description = "remove venv and cache"
 commands = "rm -rf .venv/ .ruff_cache/ .mypy_cache/"
 
 [run]
-description = "jobs pipeline"
-suite = ["install", "format", "lint"]
+description = "tasks pipeline"
+flow = ["install", "format", "lint"]
 ```
 ---------------------------
 - Run the tool in the terminal with a simple <b>'koi'</b> command
@@ -66,37 +66,37 @@ $ koi
 ```
 ```shell
 (logs omitted...)
-$ All jobs succeeded! ['lint', 'format', 'test']
+$ All tasks succeeded! ['lint', 'format', 'test']
 Detoxing took: 14.088007061000098
 ```
-- In case of failing jobs you get general stats
+- In case of failing tasks you get general stats
 ```shell
 (logs omitted...)
 $ Unsuccessful detoxing took: 13.532951637999759
-Failed jobs: ['format']
-Successful jobs: ['lint', 'test']
+Failed tasks: ['format']
+Successful tasks: ['lint', 'test']
 ```
 or
 ```shell
 $ Unsuccessful detoxing took: 8.48367640699962
-Failed jobs: ['format']
-Successful jobs: ['lint']
-Skipped jobs: ['test']
+Failed tasks: ['format']
+Successful tasks: ['lint']
+Skipped tasks: ['test']
 ```
 ---------------------------
-- You could run specific jobs in the command line
+- You could run specific tasks in the command line
 ```shell
-$ koi --job format
+$ koi --task format
 ```
-or a list of jobs
+or a list of tasks
 ```shell
-$ koi -j format test
+$ koi -t format test
 ```
-<b>NB:</b> If there is a <i>'run'</i> table in the config file jobs specified in the command line take precedence
+<b>NB:</b> If there is a <i>'run'</i> table in the config file tasks specified in the command line take precedence
 
 - other available options
 ```shell
-# run all jobs from the config file 
+# run all tasks from the config file 
 $ koi --run-all  # short form: -r
 ```
 ```shell
@@ -108,26 +108,26 @@ $ koi --silent  # -s
 $ koi --mute-commands  # -m
 ```
 ```shell
-# skip a job from config file - can be combined e.g. with --run-all
-$ koi -r --skip test
+# skip a task from config file - can be combined e.g. with --run-all
+$ koi -r --skip test  # -S
 ```
 - commands showing data
 ```shell
-# display all jobs from the config file
+# display all tasks from the config file
 $ koi --all  # -a
 # ['install', 'format', 'test', 'cleanup', 'run']
 
 ```
 ```shell
-# display all jobs from the 'suite' table
-$ koi --suite  # -t
+# display all tasks from a flow inside 'run' table
+$ koi --describe-flow  # -D
 # ['install', 'format', 'test']
 ```
 ```shell
-# display config for a given job
+# display config for a given task
 $ koi --describe  format  # -d
 # FORMAT
 #         description: format code
-#         commands: uv run ruff check
-#                   uv run ruff format
+#         commands:    uv run ruff check
+#                      uv run ruff format
 ```
