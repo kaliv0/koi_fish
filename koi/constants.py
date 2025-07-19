@@ -1,4 +1,4 @@
-class CommonConfig:  # TODO: rename
+class CommonConfig:
     CONFIG_FILE = "koi.toml"
     SPINNER_TIMEOUT = 0.5
 

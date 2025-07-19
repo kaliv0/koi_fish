@@ -2,8 +2,6 @@ import time
 
 
 class Timer:
-    elapsed = 0
-
     def __enter__(self):
         self.start = time.perf_counter()
         return self

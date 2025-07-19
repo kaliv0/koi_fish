@@ -343,7 +343,6 @@ class Runner:
             with ThreadPoolExecutor(2) as executor:
                 with self.shell_manager(cmds):
                     executor.submit(self.spinner, i)
-                    # time.sleep(2)  # TODO
                     status = self.run_subprocess(cmds)
             return status
         else:

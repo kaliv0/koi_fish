@@ -15,9 +15,9 @@ def get_command_line_args() -> Namespace:
     parser.add_argument(
         nargs="?",
         default=".",
-        dest="dir_path",  # TODO: rename
+        dest="dir_path",
         metavar="PATH",
-        help="path to config file",
+        help="path to config file dir",
     )
     parser.add_argument(
         "-s",
