@@ -2,6 +2,8 @@
     --flow -> if there are duplicates in config -> only shown with --allow-duplicates flag
     --finally -> deferred_tasks are put in the common 'successful tasks' list -> separate them?
 
+- pass path/to/config
+
 - support flags inside config tables in .toml
     -> -m, -s
 

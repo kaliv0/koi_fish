@@ -13,6 +13,13 @@ def get_command_line_args() -> Namespace:
 
     parser.add_argument("--version", action="version", version=f"%(prog)s v{__version__}")
     parser.add_argument(
+        nargs="?",
+        default=".",
+        dest="dir_path",  # TODO: rename
+        metavar="PATH",
+        help="path to config file",
+    )
+    parser.add_argument(
         "-s",
         "--silent",
         action="store_true",
@@ -59,6 +66,13 @@ def get_command_line_args() -> Namespace:
         action="store_true",
         default=False,
         help="allow duplicate tasks in flow",
+    )
+    parser.add_argument(
+        "-n",
+        "--no-color",
+        action="store_true",
+        default=False,
+        help="disable colored output in logs",
     )
 
     run_group = parser.add_mutually_exclusive_group()
@@ -125,6 +139,7 @@ def task_checker(task: str) -> str:
 def main():
     args = get_command_line_args()
     Runner(
+        args.dir_path,
         args.cli_tasks,
         args.tasks_to_omit,
         args.flow_to_run,
@@ -134,6 +149,7 @@ def main():
         args.fail_fast,
         args.tasks_to_defer,
         args.allow_duplicates,
+        args.no_color,
         args.display_all,
         args.tasks_to_describe,
         args.flow_to_describe,

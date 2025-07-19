@@ -2,7 +2,6 @@ import itertools
 import os
 import subprocess
 import sys
-import time
 import tomllib
 from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor
@@ -13,6 +12,7 @@ from typing import TypeAlias
 
 from koi.constants import CommonConfig, LogMessages, Table, Cursor, TextColor
 from koi.logger import Logger
+from koi.utils import Timer
 
 Task: TypeAlias = list[str] | str
 TaskTable: TypeAlias = dict[str, Task]
@@ -21,6 +21,7 @@ TaskTable: TypeAlias = dict[str, Task]
 class Runner:
     def __init__(
         self,
+        dir_path: str,
         cli_tasks: list[str],
         tasks_to_omit: list[str],
         flow_to_run: str,
@@ -30,10 +31,12 @@ class Runner:
         fail_fast: bool,
         tasks_to_defer: list[str],
         allow_duplicates: bool,
+        no_color: bool,
         display_all: bool,
         tasks_to_describe: list[str],
         flow_to_describe: str,
     ) -> None:
+        self.dir_path = dir_path
         self.cli_tasks = cli_tasks
         self.tasks_to_omit = tasks_to_omit
         self.flow_to_run = flow_to_run
@@ -43,6 +46,7 @@ class Runner:
         self.fail_fast = fail_fast
         self.tasks_to_defer = tasks_to_defer
         self.allow_duplicates = allow_duplicates
+        self.no_color = no_color
         self.display_all = display_all
         self.tasks_to_describe = tasks_to_describe
         self.flow_to_describe = flow_to_describe
@@ -54,6 +58,8 @@ class Runner:
         self.is_successful: bool = False
         # used for spinner with --silent flag
         self.supervisor = Event()
+
+        self.logger = Logger(self.no_color)
 
     @cached_property
     def skipped_tasks(self) -> list[str]:
@@ -128,28 +134,28 @@ class Runner:
     def prepare_all_tasks_from_config(self, flow: str) -> bool:
         run_entries = self.data[Table.RUN]
         if flow not in run_entries:
-            Logger.error(
-                f"Error: missing key '{Logger.format_error_font(flow)}' in '{Logger.format_error_font(Table.RUN)}' table"
+            self.logger.error(
+                f"Error: missing key '{self.logger.format_error_font(flow)}' in '{self.logger.format_error_font(Table.RUN)}' table"
             )
             return False
         if not run_entries[flow]:
-            Logger.error(
-                f"Error: '{Logger.format_error_font(f'{Table.RUN} {flow}')}' cannot be empty"
+            self.logger.error(
+                f"Error: '{self.logger.format_error_font(f'{Table.RUN} {flow}')}' cannot be empty"
             )
             return False
         if not isinstance(run_entries[flow], list):
-            Logger.error(
-                f"Error: '{Logger.format_error_font(f'{Table.RUN} {flow}')}' must be of type list"
+            self.logger.error(
+                f"Error: '{self.logger.format_error_font(f'{Table.RUN} {flow}')}' must be of type list"
             )
             return False
         if Table.RUN in run_entries[flow]:
-            Logger.error(
-                f"Error: '{Logger.format_error_font(f'{Table.RUN} {flow}')}' cannot contain itself recursively"
+            self.logger.error(
+                f"Error: '{self.logger.format_error_font(f'{Table.RUN} {flow}')}' cannot contain itself recursively"
             )
             return False
         if invalid_tasks := [task for task in run_entries[flow] if task not in self.data]:
-            Logger.error(
-                f"Error: '{Logger.format_error_font(f'{Table.RUN} {flow}')}' contains invalid tasks: {invalid_tasks}"
+            self.logger.error(
+                f"Error: '{self.logger.format_error_font(f'{Table.RUN} {flow}')}' contains invalid tasks: {invalid_tasks}"
             )
             return False
         self.all_tasks = run_entries[flow]  # type: ignore ## 'main' is always list of str
@@ -157,49 +163,41 @@ class Runner:
 
     ### main flow ###
     def run(self) -> None:
-        with self.timer():
+        with Timer() as t:
             self.print_header()
             self.run_stages()
-
-    @contextmanager
-    def timer(self):
-        start = time.perf_counter()
-        try:
-            yield
-        finally:
-            stop = time.perf_counter()
-            if self.should_display_stats:
-                self.log_stats(total_time=(stop - start))
+        if self.should_display_stats:
+            self.log_stats(total_time=t.elapsed)
 
     def print_header(self) -> None:
         if not self.should_display_stats or self.should_display_info:
             return
         if self.run_full_pipeline and not self.silent_logs:
-            Logger.info(LogMessages.HEADER)
+            self.logger.info(LogMessages.HEADER)
         else:
-            Logger.info("Let's go!")
+            self.logger.info("Let's go!")
 
     def log_stats(self, total_time: float) -> None:
-        Logger.log(LogMessages.DELIMITER)
+        self.logger.log(LogMessages.DELIMITER)
         if self.is_successful:
-            Logger.info(f"All tasks succeeded! {self.successful_tasks}")
-            Logger.info(f"Run took: {total_time}")
+            self.logger.info(f"All tasks succeeded! {self.successful_tasks}")
+            self.logger.info(f"Run took: {total_time}")
             return
 
-        Logger.fail(f"Unsuccessful run took: {total_time}")
+        self.logger.fail(f"Unsuccessful run took: {total_time}")
         if self.failed_tasks:
             # in case parsing fails before any task is run
-            Logger.error(f"Failed tasks: {self.failed_tasks}")
+            self.logger.error(f"Failed tasks: {self.failed_tasks}")
         if self.successful_tasks:
-            Logger.info(
+            self.logger.info(
                 f"Successful tasks: {[x for x in self.successful_tasks if x not in self.failed_tasks]}"
             )
         if self.skipped_tasks:
-            Logger.fail(f"Skipped tasks: {self.skipped_tasks}")
+            self.logger.fail(f"Skipped tasks: {self.skipped_tasks}")
 
     def run_stages(self) -> None:
         if not (self.handle_config_file() and self.validate_cli_tasks()):
-            Logger.fail("Run failed")
+            self.logger.fail("Run failed")
             sys.exit(1)
         if self.should_display_info:
             self.display_info()
@@ -207,12 +205,12 @@ class Runner:
         self.run_tasks()
 
     def handle_config_file(self) -> bool:
-        config_path = os.path.join(os.getcwd(), CommonConfig.CONFIG_FILE)
+        config_path = os.path.join(self.dir_path, CommonConfig.CONFIG_FILE)
         if not os.path.exists(config_path):
-            Logger.fail("Config file not found")
+            self.logger.fail("Config file not found")
             return False
         if not (os.path.getsize(config_path) and self.read_config_file(config_path)):
-            Logger.fail("Empty config file")
+            self.logger.fail("Empty config file")
             return False
         return True
 
@@ -232,34 +230,34 @@ class Runner:
             ),
             None,
         ):
-            Logger.fail(f"'{invalid_task}' not found in tasks flow")
+            self.logger.fail(f"'{invalid_task}' not found in tasks flow")
             return False
         return True
 
     def display_info(self) -> None:
         if self.flow_to_describe:
-            Logger.log([task for task, _ in self.task_flow])
+            self.logger.log([task for task, _ in self.task_flow])
         elif self.display_all:
-            Logger.log([task for task in self.data])
+            self.logger.log([task for task in self.data])
         elif self.tasks_to_describe:
             for task in self.tasks_to_describe:
                 if not (result := self.data.get(task)):
-                    Logger.fail(f"Selected task '{task}' doesn't exist in the config")
+                    self.logger.fail(f"Selected task '{task}' doesn't exist in the config")
                     break
-                Logger.info(f"{task.upper()}:")
-                Logger.log(self.prepare_description_log(result))
+                self.logger.info(f"{task.upper()}:")
+                self.logger.log(self.prepare_description_log(result))
 
-    @staticmethod
-    def prepare_description_log(data: TaskTable) -> str:
+    def prepare_description_log(self, data: TaskTable) -> str:
         result = []
         longest_key = max(data, key=len)
         padding = " " * (len(longest_key) + 2)
         for key, val in data.items():
-            colored_key = f"\t{TextColor.YELLOW}{key}{TextColor.RESET}"
+            first_task_padding = " " * (len(padding) - len(key) - 1)
+            if not self.no_color:
+                key = f"{TextColor.YELLOW}{key}{TextColor.RESET}"
             if isinstance(val, list):
                 val = f"\n\t{padding}".join(val)
-            first_task_padding = " " * (len(padding) - len(key) - 1)
-            result.append(f"{colored_key}:{first_task_padding}{val}")
+            result.append(f"\t{key}:{first_task_padding}{val}")
         return "\n".join(result)
 
     def run_tasks(self) -> None:
@@ -268,7 +266,7 @@ class Runner:
 
         is_run_successful = self.run_sub_flow(is_run_successful=True, is_main_flow=True)
         if self.fail_fast and self.deferred_tasks:
-            Logger.log(LogMessages.FINALLY)
+            self.logger.log(LogMessages.FINALLY)
             is_run_successful = self.run_sub_flow(
                 is_run_successful=is_run_successful, is_main_flow=False
             )
@@ -278,27 +276,25 @@ class Runner:
         flow = self.get_subflow_flow(is_main_flow)
         for i, (table, table_entries) in enumerate(flow):
             if i > 0:
-                Logger.log(LogMessages.DELIMITER)
-            Logger.start(f"{table.upper()}:")
-            start = time.perf_counter()
+                self.logger.log(LogMessages.DELIMITER)
+            self.logger.start(f"{table.upper()}:")
+            with Timer() as t:
+                if not (cmds := self.build_commands_list(table, table_entries)):
+                    is_run_successful = False
+                    if is_main_flow and self.fail_fast:
+                        break
+                    else:
+                        continue
 
-            if not (cmds := self.build_commands_list(table, table_entries)):
-                is_run_successful = False
-                if is_main_flow and self.fail_fast:
-                    break
-                else:
-                    continue
-
-            is_task_successful = self.execute_shell_commands(cmds, i)
-            is_run_successful &= is_task_successful
+                is_task_successful = self.execute_shell_commands(cmds, i)
+                is_run_successful &= is_task_successful
             if not is_task_successful:
                 self.failed_tasks.append(table)
-                Logger.error(f"{table.upper()} failed")
+                self.logger.error(f"{table.upper()} failed")
                 if is_main_flow and self.fail_fast:
                     break
             else:
-                stop = time.perf_counter()
-                Logger.success(f"{table.upper()} succeeded! Took:  {stop - start}")
+                self.logger.success(f"{table.upper()} succeeded! Took:  {t.elapsed}")
                 self.successful_tasks.append(table)
         return is_run_successful
 
@@ -311,14 +307,14 @@ class Runner:
         cmds: list[str] = []
         for names in (Table.PRE_RUN, Table.COMMANDS, Table.POST_RUN):
             cmd, cmd_is_invalid = self.get_command(table_entries, names)
-            entry_msg = f"'{Logger.format_error_font('|'.join(names))}' entry in '{Logger.format_error_font(table)}' table"
+            entry_msg = f"'{self.logger.format_error_font('|'.join(names))}' entry in '{self.logger.format_error_font(table)}' table"
             if cmd_is_invalid:
                 self.failed_tasks.append(table)
-                Logger.error(f"Error: duplicate {entry_msg}")
+                self.logger.error(f"Error: duplicate {entry_msg}")
                 return []
             if not cmd and names == Table.COMMANDS:
                 self.failed_tasks.append(table)
-                Logger.error(f"Error: {entry_msg} cannot be empty or missing")
+                self.logger.error(f"Error: {entry_msg} cannot be empty or missing")
                 return []
             if cmd:
                 self.add_command(cmds, cmd)
@@ -362,12 +358,14 @@ class Runner:
     def shell_manager(self, cmds: list[str]):
         try:
             if not self.mute_commands:
-                Logger.info("\n".join(cmds))
+                self.logger.info("\n".join(cmds))
             yield
         except KeyboardInterrupt:
             if self.silent_logs:
                 self.supervisor.set()
-            Logger.error(f"{Cursor.CLEAR_ANIMATION}Hey, I was in the middle of somethin' here!")
+            self.logger.error(
+                f"{Cursor.CLEAR_ANIMATION}Hey, I was in the middle of somethin' here!"
+            )
             sys.exit()
         else:
             if self.silent_logs:
@@ -376,15 +374,15 @@ class Runner:
     def spinner(self, i: int) -> None:
         animation_idx = i % len(LogMessages.ANIMATIONS)
         msg = "Keep fishin'!"
-        Logger.animate(Cursor.HIDE_CURSOR)
+        self.logger.animate(Cursor.HIDE_CURSOR)
         for ch in itertools.cycle(LogMessages.ANIMATIONS[animation_idx]):
-            Logger.animate(f"\r{ch}\t{msg}", flush=True)
+            self.logger.animate(f"\r{ch}\t{msg}", flush=True)
             if animation_idx > 0:
-                Logger.animate(Cursor.MOVE_CURSOR_UP)
+                self.logger.animate(Cursor.MOVE_CURSOR_UP)
             if self.supervisor.wait(CommonConfig.SPINNER_TIMEOUT):
                 break
-        Logger.animate(Cursor.CLEAR_ANIMATION)
-        Logger.animate(Cursor.SHOW_CURSOR)
+        self.logger.animate(Cursor.CLEAR_ANIMATION)
+        self.logger.animate(Cursor.SHOW_CURSOR)
 
     def run_subprocess(self, cmds: list[str]) -> bool:
         with subprocess.Popen(
@@ -403,7 +401,7 @@ class Runner:
                     err := proc.stderr.read1().decode("utf-8")  # type: ignore
                 ):
                     if text:
-                        Logger.log(text, end="", flush=True)
+                        self.logger.log(text, end="", flush=True)
                     elif err:
-                        Logger.debug(err, end="", flush=True)
+                        self.logger.debug(err, end="", flush=True)
         return proc.returncode == 0

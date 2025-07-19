@@ -1,0 +1,3 @@
+[simple]
+description = "simple task"
+cmd = "echo 'Hello world'"
