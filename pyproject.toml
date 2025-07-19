@@ -1,6 +1,6 @@
 [project]
 name = "koi-fish"
-version = "1.0.2"
+version = "2.0.0"
 description = "CLI task runner & automation tool"
 keywords = ["task automation", "cli tool", "command line runner", "task runner"]
 authors = [
@@ -18,7 +18,6 @@ dependencies = []
 dev = [
     "ruff>=0.12.0",
     "mypy>=1.16.1",
-    "pytest>=8.4.1",
 ]
 
 [project.scripts]

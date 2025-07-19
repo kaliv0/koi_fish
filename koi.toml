@@ -16,4 +16,4 @@ commands = "rm -rf .venv/ .ruff_cache/ .mypy_cache/"
 
 [run]
 description = "tasks pipeline"
-flow = ["install", "format", "lint"]
+main = ["install", "format", "lint"]

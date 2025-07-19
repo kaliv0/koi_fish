@@ -13,20 +13,27 @@
 ---------------------------
 ### How to use
 - Describe tasks as tables/dictionaries in a config file called 'koi.toml'.
-<br>(Put the config inside the root directory of your project)
 ```toml
 [test]
 description = "run tests"
-dependencies = "uv sync --all-extras --dev"
+pre_run = "uv sync --all-extras --dev"
 commands = "uv run pytest -v ."
-cleanup = "rm -rf .pytest_cache/"
+post_run = "rm -rf .pytest_cache/"
 ```
-- <i>description</i>, <i>dependencies</i>  and <i>cleanup</i> could be optional but not <i>commands</i>
+- <i>description</i>, <i>pre_run</i>  and <i>post_run</i> could be optional but not <i>commands</i>
 ```toml
 [no-deps]
 commands = "echo 'Hello world'"
 ```
-- <i>dependencies</i>,  <i>commands</i>  and <i>cleanup</i> could be strings or (in case of more than one) a list of strings
+- they can have long (full) or short names
+```toml
+[test]
+info = "run tests"
+pre = "uv sync --all-extras --dev"
+cmd = "uv run pytest -v ."
+post = "rm -rf .pytest_cache/"
+```
+- <i>pre_run</i>,  <i>commands</i>  and <i>post_run</i> could be strings or (in case of more than one) a list of strings
 ```toml
 commands = ["uv run ruff check", "uv run ruff format"]
 ```
@@ -108,19 +115,40 @@ $ koi --silent  # -s
 $ koi --mute-commands  # -m
 ```
 ```shell
-# skip a task from config file - can be combined e.g. with --run-all
+# skip task(s) from config file - can be combined e.g. with --run-all
 $ koi -r --skip test  # -S
+```
+```shell
+# cancel flow if a task fails
+$ koi --fail-fast  # -F
+```
+```shell
+# task(s) to run at the end if the flow fails
+$ koi -rF --finally teardown
+```
+```shell
+# allow duplicate tasks in flow
+$ koi --allow-duplicates  # -A
+```
+```shell
+# disable colored output in logs
+$ koi --no-color  # -n
+```
+```shell
+# run task(s) from given 'flow' table
+$ koi --flow main  # -f
+# NB running sole 'koi' command is equivalent to 'koi --flow main .' 
 ```
 - commands showing data
 ```shell
 # display all tasks from the config file
 $ koi --all  # -a
-# ['install', 'format', 'test', 'cleanup', 'run']
+# ['install', 'format', 'test', 'teardown', 'run']
 
 ```
 ```shell
 # display all tasks from a flow inside 'run' table
-$ koi --describe-flow  # -D
+$ koi --describe-flow main # -D
 # ['install', 'format', 'test']
 ```
 ```shell
