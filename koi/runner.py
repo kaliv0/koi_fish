@@ -33,6 +33,7 @@ class Runner:
         allow_duplicates: bool,
         no_color: bool,
         display_all: bool,
+        display_run_table: bool,
         tasks_to_describe: list[str],
         flow_to_describe: str,
     ) -> None:
@@ -48,6 +49,7 @@ class Runner:
         self.allow_duplicates = allow_duplicates
         self.no_color = no_color
         self.display_all = display_all
+        self.display_run_table = display_run_table
         self.tasks_to_describe = tasks_to_describe
         self.flow_to_describe = flow_to_describe
 
@@ -75,13 +77,17 @@ class Runner:
         return self.prepare_task_flow(is_deferred=True)
 
     @cached_property
+    def config_tasks(self) -> list[str]:
+        return [task for task in self.data if task != Table.RUN]
+
+    @cached_property
     def task_flow(self) -> list[tuple[str, TaskTable]]:
         if self.cli_tasks:
             # -t/--task flag
             self.all_tasks = self.cli_tasks
         elif self.run_all:
             # -r/--run-all
-            self.all_tasks = [task for task in self.data if task != Table.RUN]
+            self.all_tasks = self.config_tasks
         elif flow := self.flow_to_describe or self.flow_to_run:
             # -D or -f
             is_successful = self.prepare_all_tasks_from_config(flow)  # noqa
@@ -125,7 +131,12 @@ class Runner:
     @property
     def should_display_info(self) -> bool:
         # make mypy less annoying
-        return self.display_all or bool(self.tasks_to_describe) or bool(self.flow_to_describe)
+        return (
+            self.display_all
+            or self.display_run_table
+            or bool(self.tasks_to_describe)
+            or bool(self.flow_to_describe)
+        )
 
     @property
     def run_full_pipeline(self) -> bool:
@@ -135,27 +146,27 @@ class Runner:
         run_entries = self.data[Table.RUN]
         if flow not in run_entries:
             self.logger.error(
-                f"Error: missing key '{self.logger.format_error_font(flow)}' in '{self.logger.format_error_font(Table.RUN)}' table"
+                f"Error: missing key '{self.logger.format_font(flow)}' in '{self.logger.format_font(Table.RUN)}' table"
             )
             return False
         if not run_entries[flow]:
             self.logger.error(
-                f"Error: '{self.logger.format_error_font(f'{Table.RUN} {flow}')}' cannot be empty"
+                f"Error: '{self.logger.format_font(f'{Table.RUN} {flow}')}' cannot be empty"
             )
             return False
         if not isinstance(run_entries[flow], list):
             self.logger.error(
-                f"Error: '{self.logger.format_error_font(f'{Table.RUN} {flow}')}' must be of type list"
+                f"Error: '{self.logger.format_font(f'{Table.RUN} {flow}')}' must be of type list"
             )
             return False
         if Table.RUN in run_entries[flow]:
             self.logger.error(
-                f"Error: '{self.logger.format_error_font(f'{Table.RUN} {flow}')}' cannot contain itself recursively"
+                f"Error: '{self.logger.format_font(f'{Table.RUN} {flow}')}' cannot contain itself recursively"
             )
             return False
         if invalid_tasks := [task for task in run_entries[flow] if task not in self.data]:
             self.logger.error(
-                f"Error: '{self.logger.format_error_font(f'{Table.RUN} {flow}')}' contains invalid tasks: {invalid_tasks}"
+                f"Error: '{self.logger.format_font(f'{Table.RUN} {flow}')}' contains invalid tasks: {invalid_tasks}"
             )
             return False
         self.all_tasks = run_entries[flow]  # type: ignore ## 'main' is always list of str
@@ -230,19 +241,31 @@ class Runner:
             ),
             None,
         ):
-            self.logger.fail(f"'{invalid_task}' not found in tasks flow")
+            self.logger.fail(
+                f"'{self.logger.format_font(invalid_task, is_failed=True)}' not found in tasks flow"
+            )
             return False
         return True
 
     def display_info(self) -> None:
-        if self.flow_to_describe:
+        if self.display_all:
+            self.logger.log(self.config_tasks)
+        elif self.display_run_table:
+            if not (result := self.data.get(Table.RUN)):
+                self.logger.fail(
+                    f"'{self.logger.format_font(Table.RUN, is_failed=True)}' table doesn't exist in the config"
+                )
+                return
+            self.logger.info(f"{Table.RUN.upper()}:")
+            self.logger.log(self.prepare_description_log(result))
+        elif self.flow_to_describe and self.task_flow:
             self.logger.log([task for task, _ in self.task_flow])
-        elif self.display_all:
-            self.logger.log([task for task in self.data])
         elif self.tasks_to_describe:
             for task in self.tasks_to_describe:
                 if not (result := self.data.get(task)):
-                    self.logger.fail(f"Selected task '{task}' doesn't exist in the config")
+                    self.logger.fail(
+                        f"Selected task '{self.logger.format_font(task, is_failed=True)}' doesn't exist in the config"
+                    )
                     break
                 self.logger.info(f"{task.upper()}:")
                 self.logger.log(self.prepare_description_log(result))
@@ -307,7 +330,7 @@ class Runner:
         cmds: list[str] = []
         for names in (Table.PRE_RUN, Table.COMMANDS, Table.POST_RUN):
             cmd, cmd_is_invalid = self.get_command(table_entries, names)
-            entry_msg = f"'{self.logger.format_error_font('|'.join(names))}' entry in '{self.logger.format_error_font(table)}' table"
+            entry_msg = f"'{self.logger.format_font('|'.join(names))}' entry in '{self.logger.format_font(table)}' table"
             if cmd_is_invalid:
                 self.failed_tasks.append(table)
                 self.logger.error(f"Error: duplicate {entry_msg}")

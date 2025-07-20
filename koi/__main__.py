@@ -38,7 +38,7 @@ def get_command_line_args() -> Namespace:
         "-S",
         "--skip",
         nargs="+",
-        type=task_checker,
+        type=param_checker,
         default=[],
         dest="tasks_to_omit",
         metavar="TASK",
@@ -54,7 +54,7 @@ def get_command_line_args() -> Namespace:
     parser.add_argument(
         "--finally",
         nargs="+",
-        type=task_checker,
+        type=param_checker,
         default=[],
         dest="tasks_to_defer",
         metavar="TASK",
@@ -80,7 +80,7 @@ def get_command_line_args() -> Namespace:
         "-t",
         "--tasks",
         nargs="+",
-        type=task_checker,
+        type=param_checker,
         default=[],
         dest="cli_tasks",
         metavar="TASK",
@@ -89,6 +89,7 @@ def get_command_line_args() -> Namespace:
     run_group.add_argument(
         "-f",
         "--flow",
+        type=param_checker,
         dest="flow_to_run",
         metavar="FLOW",
         help="run task(s) from given 'flow' table",
@@ -111,8 +112,17 @@ def get_command_line_args() -> Namespace:
         help="display all tasks from config",
     )
     info_group.add_argument(
+        "-c",
+        "--config",
+        action="store_true",
+        default=False,
+        dest="display_run_table",
+        help="display 'run' table",
+    )
+    info_group.add_argument(
         "-D",
         "--describe-flow",
+        type=param_checker,
         dest="flow_to_describe",
         metavar="FLOW",
         help="display all tasks from given 'flow' table",
@@ -121,6 +131,7 @@ def get_command_line_args() -> Namespace:
         "-d",
         "--describe",
         nargs="+",
+        type=param_checker,
         default=[],
         dest="tasks_to_describe",
         metavar="TASK",
@@ -130,13 +141,13 @@ def get_command_line_args() -> Namespace:
     return parser.parse_args()
 
 
-def task_checker(task: str) -> str:
-    if task == Table.RUN:
-        raise ArgumentTypeError(f'Invalid task: "{Table.RUN}"')
-    return task
+def param_checker(param: str) -> str:
+    if param == Table.RUN:
+        raise ArgumentTypeError(f'"{Table.RUN}" is a reserved keyword')
+    return param
 
 
-def main():
+def main() -> None:
     args = get_command_line_args()
     Runner(
         args.dir_path,
@@ -151,6 +162,7 @@ def main():
         args.allow_duplicates,
         args.no_color,
         args.display_all,
+        args.display_run_table,
         args.tasks_to_describe,
         args.flow_to_describe,
     ).run()
