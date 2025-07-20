@@ -13,6 +13,13 @@ def get_command_line_args() -> Namespace:
 
     parser.add_argument("--version", action="version", version=f"%(prog)s v{__version__}")
     parser.add_argument(
+        nargs="?",
+        default=".",
+        dest="dir_path",
+        metavar="PATH",
+        help="path to config file dir",
+    )
+    parser.add_argument(
         "-s",
         "--silent",
         action="store_true",
@@ -28,32 +35,71 @@ def get_command_line_args() -> Namespace:
         help="don't print shell commands",
     )
     parser.add_argument(
+        "-S",
         "--skip",
         nargs="+",
-        type=_job_checker,
+        type=param_checker,
         default=[],
-        dest="jobs_to_omit",
-        metavar="JOBS",
-        help="skip job(s) from config file",
+        dest="tasks_to_omit",
+        metavar="TASK",
+        help="skip task(s) from config file",
+    )
+    parser.add_argument(
+        "-F",
+        "--fail-fast",
+        action="store_true",
+        default=False,
+        help="cancel flow if a task fails",
+    )
+    parser.add_argument(
+        "--finally",
+        nargs="+",
+        type=param_checker,
+        default=[],
+        dest="tasks_to_defer",
+        metavar="TASK",
+        help="task(s) to run on close if the flow fails (used with --fail-fast)",
+    )
+    parser.add_argument(
+        "-A",
+        "--allow-duplicates",
+        action="store_true",
+        default=False,
+        help="allow duplicate tasks in flow",
+    )
+    parser.add_argument(
+        "-n",
+        "--no-color",
+        action="store_true",
+        default=False,
+        help="disable colored output in logs",
     )
 
     run_group = parser.add_mutually_exclusive_group()
     run_group.add_argument(
-        "-j",
-        "--jobs",
+        "-t",
+        "--tasks",
         nargs="+",
-        type=_job_checker,
+        type=param_checker,
         default=[],
-        dest="cli_jobs",
-        metavar="JOBS",
-        help="run selected job(s) from config",
+        dest="cli_tasks",
+        metavar="TASK",
+        help="run selected task(s) from config",
+    )
+    run_group.add_argument(
+        "-f",
+        "--flow",
+        type=param_checker,
+        dest="flow_to_run",
+        metavar="FLOW",
+        help="run task(s) from given 'flow' table",
     )
     run_group.add_argument(
         "-r",
         "--run-all",
         action="store_true",
         default=False,
-        help="run all jobs from config",
+        help="run all tasks from config",
     )
 
     info_group = parser.add_mutually_exclusive_group()
@@ -63,44 +109,64 @@ def get_command_line_args() -> Namespace:
         action="store_true",
         default=False,
         dest="display_all",
-        help="display all jobs from config",
+        help="display all tasks from config",
     )
     info_group.add_argument(
-        "-t",
-        "--suite",
+        "-c",
+        "--config",
         action="store_true",
         default=False,
-        dest="display_suite",
-        help="display all jobs from 'suite' table",
+        dest="display_run_table",
+        help="display 'run' table",
+    )
+    info_group.add_argument(
+        "-D",
+        "--describe-flow",
+        type=param_checker,
+        dest="flow_to_describe",
+        metavar="FLOW",
+        help="display all tasks from given 'flow' table",
     )
     info_group.add_argument(
         "-d",
         "--describe",
         nargs="+",
+        type=param_checker,
         default=[],
-        dest="jobs_to_describe",
-        metavar="JOBS",
-        help="display config for given job(s)",
+        dest="tasks_to_describe",
+        metavar="TASK",
+        help="display config for given task(s)",
     )
 
     return parser.parse_args()
 
 
-def _job_checker(job: str) -> str:
-    if job == Table.RUN:
-        raise ArgumentTypeError(f'Invalid job: "{Table.RUN}"')
-    return job
+def param_checker(param: str) -> str:
+    if param == Table.RUN:
+        raise ArgumentTypeError(f'"{Table.RUN}" is a reserved keyword')
+    return param
 
 
-def main():
+def main() -> None:
     args = get_command_line_args()
     Runner(
-        args.cli_jobs,
-        args.jobs_to_omit,
+        args.dir_path,
+        args.cli_tasks,
+        args.tasks_to_omit,
+        args.flow_to_run,
         args.run_all,
         args.silent_logs,
         args.mute_commands,
-        args.display_suite,
+        args.fail_fast,
+        args.tasks_to_defer,
+        args.allow_duplicates,
+        args.no_color,
         args.display_all,
-        args.jobs_to_describe,
+        args.display_run_table,
+        args.tasks_to_describe,
+        args.flow_to_describe,
     ).run()
+
+
+if __name__ == "__main__":
+    main()

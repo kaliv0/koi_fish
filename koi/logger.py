@@ -1,35 +1,46 @@
-from koi.constants import LogLevel
+from koi.constants import LogLevel, Font
 
 
 class Logger:
-    @classmethod
-    def log(cls, msg, end="\n", flush=False):
+    def __init__(self, no_color: bool = False) -> None:
+        self.no_color = no_color
+
+    @staticmethod
+    def log(msg: list[str] | str, end: str = "\n", flush: bool = False) -> None:
         print(msg, end=end, flush=flush)  # white
 
-    @classmethod
-    def error(cls, msg, end="\n", flush=False):
-        cls._log(LogLevel.ERROR, msg, end=end, flush=flush)  # red
+    def error(self, msg: str, end: str = "\n", flush: bool = False) -> None:
+        self.print_log(LogLevel.ERROR, msg, end=end, flush=flush)  # red
 
-    @classmethod
-    def success(cls, msg, end="\n", flush=False):
-        cls._log(LogLevel.SUCCESS, msg, end=end, flush=flush)  # green
+    def success(self, msg: str, end: str = "\n", flush: bool = False) -> None:
+        self.print_log(LogLevel.SUCCESS, msg, end=end, flush=flush)  # green
 
-    @classmethod
-    def start(cls, msg, end="\n", flush=False):
-        cls._log(LogLevel.START, msg, end=end, flush=flush)  # yellow
+    def start(self, msg: str, end: str = "\n", flush: bool = False) -> None:
+        self.print_log(LogLevel.START, msg, end=end, flush=flush)  # yellow
 
-    @classmethod
-    def fail(cls, msg, end="\n", flush=False):
-        cls._log(LogLevel.FAIL, msg, end=end, flush=flush)  # blue
+    def fail(self, msg: str, end: str = "\n", flush: bool = False) -> None:
+        self.print_log(LogLevel.FAIL, msg, end=end, flush=flush)  # blue
 
-    @classmethod
-    def debug(cls, msg, end="\n", flush=False):
-        cls._log(LogLevel.DEBUG, msg, end=end, flush=flush)  # purple
+    def debug(self, msg: str, end: str = "\n", flush: bool = False) -> None:
+        self.print_log(LogLevel.DEBUG, msg, end=end, flush=flush)  # purple
 
-    @classmethod
-    def info(cls, msg, end="\n", flush=False):
-        cls._log(LogLevel.INFO, msg, end=end, flush=flush)  # light blue
+    def info(self, msg: str, end: str = "\n", flush: bool = False) -> None:
+        self.print_log(LogLevel.INFO, msg, end=end, flush=flush)  # light blue
 
-    @classmethod
-    def _log(cls, level, msg, end="\n", flush=False):
-        print(f"\033[{level}m{msg}\033[00m", end=end, flush=flush)
+    def print_log(self, level: str, msg: str, end: str = "\n", flush: bool = False) -> None:
+        if self.no_color:
+            self.log(msg, end=end, flush=flush)
+        else:
+            print(f"{level}{msg}{LogLevel.RESET}", end=end, flush=flush)
+
+    @staticmethod
+    def animate(msg: str, end="", flush: bool = False) -> None:
+        print(msg, end=end, flush=flush)
+
+    def format_font(self, msg: str, is_failed=False) -> str:
+        if self.no_color:
+            return f"{Font.ITALIC}{msg}{Font.RESET}"
+        elif is_failed:
+            return f"{LogLevel.FAIL}{Font.ITALIC}{msg}{Font.RESET}{LogLevel.FAIL}"
+        else:
+            return f"{LogLevel.ERROR}{Font.ITALIC}{msg}{Font.RESET}{LogLevel.ERROR}"
