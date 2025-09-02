@@ -424,6 +424,6 @@ class Runner:
                 ):
                     if text:
                         self.logger.log(text, end="", flush=True)
-                    elif err:
+                    elif err:  # type: ignore
                         self.logger.debug(err, end="", flush=True)
         return proc.returncode == 0
