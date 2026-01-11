@@ -14,7 +14,7 @@
 
 ### How to use
 
-- Describe tasks as tables/dictionaries in a config file called <i>'koi.toml'</i>.
+- Describe tasks as tables/dictionaries in a config file named <i>'koi.toml'</i>.
 
 ```toml
 [test]
@@ -94,14 +94,14 @@ $ koi ~/pyproj/foo/
 ```shell
 (logs omitted...)
 $ All tasks succeeded! ['lint', 'format', 'test']
-Detoxing took: 14.088007061000098
+Run took: 14.088007061000098
 ```
 
 - In case of failing tasks you get general stats
 
 ```shell
 (logs omitted...)
-$ Unsuccessful detoxing took: 13.532951637999759
+$ Unsuccessful run took: 13.532951637999759
 Failed tasks: ['format']
 Successful tasks: ['lint', 'test']
 ```
@@ -109,7 +109,7 @@ Successful tasks: ['lint', 'test']
 or
 
 ```shell
-$ Unsuccessful detoxing took: 8.48367640699962
+$ Unsuccessful run took: 8.48367640699962
 Failed tasks: ['format']
 Successful tasks: ['lint']
 Skipped tasks: ['test']
