@@ -4,7 +4,7 @@ version = "2.0.1"
 description = "CLI task runner & automation tool"
 keywords = ["task automation", "cli tool", "command line runner", "task runner"]
 authors = [
-  {name = "kaliv0", email = "kaloyan.ivanov88@gmail.com"},
+  {name = "kaliv0", email = "kaliv.zero@gmail.com"},
 ]
 urls = {repository = "https://github.com/kaliv0/koi_fish.git"}
 license-files = ["LICENSE"]
