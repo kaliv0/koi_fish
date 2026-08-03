@@ -12,7 +12,7 @@ Scan of potential improvements, edge cases, memory concerns, and performance not
 ## Correctness / edge cases
 
 - **Deferred tasks only run when `fail_fast` is set** (`if self.fail_fast and self.deferred_tasks`). Easy to misunderstand.
-- **`tomllib.load` is uncaught** — invalid TOML becomes a traceback, not a friendly failure.
+- **`tomllib.load` is uncaught** — invalid TOML becomes a traceback, not a friendly failure. [DONE]
 - **`.decode("utf-8")` can raise** on binary output.
 - **`prepare_description_log`** — `max(data, key=len)` crashes on an empty table. [DONE]
 - **Flow validation is shallow** — checks for the literal `"run"` in a flow list, not nested/cyclic flow refs (if you ever add those).

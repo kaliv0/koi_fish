@@ -238,15 +238,24 @@ class Runner:
         if not os.path.exists(config_path):
             self.logger.fail("Config file not found")
             return False
-        if not (os.path.getsize(config_path) and self.read_config_file(config_path)):
+        if not os.path.getsize(config_path):
             self.logger.fail("Empty config file")
             return False
-        return True
+        return self.read_config_file(config_path)
 
     def read_config_file(self, config_path: str) -> bool:
         with open(config_path, "rb") as f:
-            self.data = tomllib.load(f)
-        return bool(self.data)
+            try:
+                self.data = tomllib.load(f)
+            except tomllib.TOMLDecodeError as e:
+                self.logger.fail(
+                    f"Invalid config: {self.logger.format_font(str(e), is_failed=True)}"
+                )
+                return False
+        if not self.data:
+            self.logger.fail("Empty config file")
+            return False
+        return True
 
     def validate_cli_tasks(self) -> bool:
         if not (self.cli_tasks or self.tasks_to_defer):
