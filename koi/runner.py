@@ -1,17 +1,18 @@
+import contextlib
 import itertools
 import os
+import selectors
 import signal
 import subprocess
 import sys
 import tomllib
 from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor
-import contextlib
 from functools import cached_property
 from threading import Event
 from typing import TypeAlias
 
-from koi.constants import CommonConfig, LogMessages, Table, Cursor, TextColor, ExitCode
+from koi.constants import CommonConfig, Cursor, ExitCode, LogMessages, Table, TextColor
 from koi.logger import Logger
 from koi.utils import Timer
 
@@ -409,11 +410,12 @@ class Runner:
         self.logger.animate(Cursor.SHOW_CURSOR)
 
     def run_subprocess(self, cmds: list[str]) -> bool:
+        sink = subprocess.DEVNULL if self.silent_logs else subprocess.PIPE
         with (
             subprocess.Popen(
                 " && ".join(cmds),  # presumably every command depends on the previous one,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stdout=sink,
+                stderr=sink,
                 shell=True,
                 executable="/bin/bash",
                 start_new_session=True,  # put shell in its own process group so we can tear-down separately on Ctrl-C
@@ -421,24 +423,31 @@ class Runner:
         ):
             try:
                 if self.silent_logs:
-                    proc.communicate()
+                    proc.wait()
                 else:
-                    # Use read1() instead of read() or Popen.communicate() as both block until EOF
-                    # https://docs.python.org/3/library/io.html#io.BufferedIOBase.read1
-                    while (text := proc.stdout.read1().decode("utf-8")) or (  # type: ignore
-                        err := proc.stderr.read1().decode("utf-8")  # type: ignore
-                    ):
-                        if text:
-                            self.logger.log(text, end="", flush=True)
-                        elif err:  # type: ignore
-                            self.logger.debug(err, end="", flush=True)
+                    self._stream_output(proc)
             except KeyboardInterrupt:
-                self.terminate_process_tree(proc)
+                self._terminate_process_tree(proc)
                 raise
         return proc.returncode == 0
 
+    def _stream_output(self, proc: subprocess.Popen[bytes]) -> None:
+        # NB: unlike read()/communicate() read1() returns as soon as bytes are available.
+        # https://docs.python.org/3/library/io.html#io.BufferedIOBase.read1
+        assert proc.stdout is not None and proc.stderr is not None
+        with selectors.DefaultSelector() as sel:
+            sel.register(proc.stdout, selectors.EVENT_READ, self.logger.log)
+            sel.register(proc.stderr, selectors.EVENT_READ, self.logger.debug)
+            while sel.get_map():
+                for key, _ in sel.select():
+                    chunk = key.fileobj.read1()  # type: ignore[union-attr]
+                    if not chunk:
+                        sel.unregister(key.fileobj)
+                        continue
+                    key.data(chunk.decode("utf-8"), end="", flush=True)
+
     @staticmethod
-    def terminate_process_tree(proc: subprocess.Popen[bytes]) -> None:
+    def _terminate_process_tree(proc: subprocess.Popen[bytes]) -> None:
         try:
             os.killpg(proc.pid, signal.SIGTERM)
             proc.wait(timeout=CommonConfig.TERMINATE_TIMEOUT)
