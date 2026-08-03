@@ -7,14 +7,14 @@ Scan of potential improvements, edge cases, memory concerns, and performance not
 - **Stdout/stderr streaming can deadlock.** The loop always blocks on `stdout.read1()` first and only then reads stderr. A command that writes heavily to stderr (or only to stderr) can fill the stderr pipe and hang while koi waits on stdout. [DONE]
 - **`--silent` buffers all output** via `communicate()` — fine for small logs, unbounded memory for noisy/long tasks. [DONE]
 - **`post_run` is not a cleanup hook.** Everything is joined with `&&`, so `post_run` runs only if pre/commands succeeded. A failed command skips it. [DONE]
-- **`-f` / `-D` with no `[run]` table** hits `self.data[Table.RUN]` and can raise `KeyError` instead of a clean error.
+- **`-f` / `-D` with no `[run]` table** hits `self.data[Table.RUN]` and can raise `KeyError` instead of a clean error. [DONE]
 
 ## Correctness / edge cases
 
 - **Deferred tasks only run when `fail_fast` is set** (`if self.fail_fast and self.deferred_tasks`). Easy to misunderstand.
 - **`tomllib.load` is uncaught** — invalid TOML becomes a traceback, not a friendly failure.
 - **`.decode("utf-8")` can raise** on binary output.
-- **`prepare_description_log`** — `max(data, key=len)` crashes on an empty table.
+- **`prepare_description_log`** — `max(data, key=len)` crashes on an empty table. [DONE]
 - **Flow validation is shallow** — checks for the literal `"run"` in a flow list, not nested/cyclic flow refs (if you ever add those).
 - **Daemonizing children** that call `setsid()` still escape `killpg`.
 - **`shell=True` + string commands** — expected for a task runner, but the config is fully trusted shell input.

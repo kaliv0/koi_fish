@@ -98,29 +98,25 @@ class Runner:
         elif self.run_all:
             # -r/--run-all
             self.all_tasks = self.config_tasks
-        # TODO: refactor next 3 branches
         elif flow := self.flow_to_describe or self.flow_to_run:
             # -D or -f
-            if self.data.get(Table.RUN) is None:
+            if not self.is_run_table_defined:
                 self.logger.fail(
                     f"'{self.logger.format_font(Table.RUN, is_failed=True)}' table doesn't exist in the config"
                 )
                 return []
-            is_successful = self.prepare_all_tasks_from_config(flow)  # noqa
-            if not is_successful:
+            if not self.prepare_all_tasks_from_config(flow):
                 return []
-        elif Table.RUN in self.data:
+        elif self.is_run_table_defined:
             # no flag
-            is_successful = self.prepare_all_tasks_from_config(Table.MAIN)
-            if not is_successful:
+            if not self.prepare_all_tasks_from_config(Table.MAIN):
                 return []
         else:
-            # no flag and no 'main' flow in config
+            # no flag and no 'run/main' flow in config
             self.all_tasks = list(self.data)
         return self.prepare_task_flow()
 
     def prepare_task_flow(self, is_deferred: bool = False) -> list[tuple[str, TaskTable]]:
-        # TODO: build dict[str, TaskTable] instead of list[tuple, ...]
         tasks_list, skip_list = self.get_task_lists(is_deferred)
         task_flow = []
         added_tasks = set()
@@ -154,6 +150,10 @@ class Runner:
             or bool(self.tasks_to_describe)
             or bool(self.flow_to_describe)
         )
+
+    @property
+    def is_run_table_defined(self) -> bool:
+        return Table.RUN in self.data
 
     @property
     def run_full_pipeline(self) -> bool:
@@ -269,13 +269,13 @@ class Runner:
         if self.display_all:
             self.logger.log(self.config_tasks)
         elif self.display_run_table:
-            if not (result := self.data.get(Table.RUN)):
+            if not self.is_run_table_defined:
                 self.logger.fail(
                     f"'{self.logger.format_font(Table.RUN, is_failed=True)}' table doesn't exist in the config"
                 )
                 return
             self.logger.info(f"{Table.RUN.upper()}:")
-            self.logger.log(self.prepare_description_log(result))
+            self.logger.log(self.prepare_description_log(self.data[Table.RUN]))
         elif self.flow_to_describe and self.task_flow:
             self.logger.log([task for task, _ in self.task_flow])
         elif self.tasks_to_describe:
@@ -289,6 +289,8 @@ class Runner:
                 self.logger.log(self.prepare_description_log(result))
 
     def prepare_description_log(self, data: TaskTable) -> str:
+        if not data:
+            return ""
         result = []
         longest_key = max(data, key=len)
         padding = " " * (len(longest_key) + 2)

@@ -23,3 +23,5 @@ commands = "rm -rf .venv/ .ruff_cache/ .mypy_cache/"
 [run]
 description = "tasks pipeline"
 main = ["install", "format", "lint"]
+# TODO: remove
+full = ["install", "lint", "format", "yes"]
