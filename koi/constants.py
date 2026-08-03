@@ -1,4 +1,7 @@
 import signal
+from collections import namedtuple
+
+TableNames = namedtuple("TableNames", ["long", "short"])
 
 
 class CommonConfig:
@@ -12,9 +15,9 @@ class ExitCode:
 
 
 class Table:
-    COMMANDS = {"commands", "cmd"}
-    PRE_RUN = {"pre_run", "pre"}
-    POST_RUN = {"post_run", "post"}
+    COMMANDS = TableNames("commands", "cmd")
+    PRE_RUN = TableNames("pre_run", "pre")
+    POST_RUN = TableNames("post_run", "post")
     RUN = "run"
     MAIN = "main"
 
@@ -74,20 +77,20 @@ class LogMessages:
         ),
         (
             r"""
-  /\_/\       
- ( 0.0 )      
+  /\_/\
+ ( 0.0 )
 >>> ^ <<<     """,
             r"""
-  /\_/\       
- ( 0._ )      
+  /\_/\
+ ( 0._ )
 >>> ^ <<<     """,
             r"""
-  /\_/\       
- ( 0.0 )      
+  /\_/\
+ ( 0.0 )
 >>> ^ <<<     """,
             r"""
-  /\_/\       
- ( _.0 )      
+  /\_/\
+ ( _.0 )
 >>> ^ <<<     """,
         ),
     ]

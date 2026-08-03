@@ -6,18 +6,26 @@ import signal
 import subprocess
 import sys
 import tomllib
-from collections.abc import Iterable
-from concurrent.futures import ThreadPoolExecutor
+from collections.abc import Generator, Iterable
 from functools import cached_property
-from threading import Event
+from threading import Event, Thread
 from typing import TypeAlias
 
-from koi.constants import CommonConfig, Cursor, ExitCode, LogMessages, Table, TextColor
+from koi.constants import (
+    CommonConfig,
+    Cursor,
+    ExitCode,
+    LogMessages,
+    Table,
+    TableNames,
+    TextColor,
+)
 from koi.logger import Logger
 from koi.utils import Timer
 
 Task: TypeAlias = list[str] | str
 TaskTable: TypeAlias = dict[str, Task]
+TaskPhases: TypeAlias = dict[str, list[str]]
 
 
 class Runner:
@@ -90,8 +98,14 @@ class Runner:
         elif self.run_all:
             # -r/--run-all
             self.all_tasks = self.config_tasks
+        # TODO: refactor next 3 branches
         elif flow := self.flow_to_describe or self.flow_to_run:
             # -D or -f
+            if self.data.get(Table.RUN) is None:
+                self.logger.fail(
+                    f"'{self.logger.format_font(Table.RUN, is_failed=True)}' table doesn't exist in the config"
+                )
+                return []
             is_successful = self.prepare_all_tasks_from_config(flow)  # noqa
             if not is_successful:
                 return []
@@ -106,6 +120,7 @@ class Runner:
         return self.prepare_task_flow()
 
     def prepare_task_flow(self, is_deferred: bool = False) -> list[tuple[str, TaskTable]]:
+        # TODO: build dict[str, TaskTable] instead of list[tuple, ...]
         tasks_list, skip_list = self.get_task_lists(is_deferred)
         task_flow = []
         added_tasks = set()
@@ -305,14 +320,14 @@ class Runner:
                 self.logger.log(LogMessages.DELIMITER)
             self.logger.start(f"{table.upper()}:")
             with Timer() as t:
-                if not (cmds := self.build_commands_list(table, table_entries)):
+                if (phases := self.build_command_phases(table, table_entries)) is None:
                     is_run_successful = False
                     if is_main_flow and self.fail_fast:
                         break
                     else:
                         continue
 
-                is_task_successful = self.execute_shell_commands(cmds, i)
+                is_task_successful = self.execute_shell_commands(phases, i)
                 is_run_successful &= is_task_successful
             if not is_task_successful:
                 self.failed_tasks.append(table)
@@ -329,28 +344,28 @@ class Runner:
             return self.task_flow
         return self.deferred_tasks
 
-    def build_commands_list(self, table: str, table_entries: TaskTable) -> list[str]:
-        cmds: list[str] = []
+    def build_command_phases(self, table: str, table_entries: TaskTable) -> TaskPhases | None:
+        phases: TaskPhases = {}
         for names in (Table.PRE_RUN, Table.COMMANDS, Table.POST_RUN):
             cmd, cmd_is_invalid = self.get_command(table_entries, names)
             entry_msg = f"'{self.logger.format_font('|'.join(names))}' entry in '{self.logger.format_font(table)}' table"
             if cmd_is_invalid:
                 self.failed_tasks.append(table)
                 self.logger.error(f"Error: duplicate {entry_msg}")
-                return []
+                return None
             if not cmd and names == Table.COMMANDS:
                 self.failed_tasks.append(table)
                 self.logger.error(f"Error: {entry_msg} cannot be empty or missing")
-                return []
+                return None
             if cmd:
-                self.add_command(cmds, cmd)
-        return cmds
+                self.add_command(phases.setdefault(names.long, []), cmd)
+        return phases
 
     @staticmethod
-    def get_command(table_entries: TaskTable, table_names: set[str]) -> tuple[Task | None, bool]:
+    def get_command(table_entries: TaskTable, table_names: TableNames) -> tuple[Task | None, bool]:
         cmd = None
         for name in table_names:
-            if (entry := table_entries.get(name, None)) is not None:
+            if (entry := table_entries.get(name)) is not None:
                 if cmd:
                     return None, True
                 cmd = entry
@@ -363,27 +378,30 @@ class Runner:
         else:
             cmds_list.append(cmd)
 
-    def execute_shell_commands(self, cmds: list[str], i: int) -> bool:
+    def execute_shell_commands(self, phases: TaskPhases, i: int) -> bool:
         if self.silent_logs:
             self.reset_event()
-            with ThreadPoolExecutor(2) as executor:
-                with self.shell_manager(cmds):
-                    executor.submit(self.spinner, i)
-                    status = self.run_subprocess(cmds)
-            return status
-        else:
-            with self.shell_manager(cmds):
-                return self.run_subprocess(cmds)
+            spinner = Thread(target=self.spinner, args=(i,), daemon=True)
+            with self.shell_manager(phases):
+                spinner.start()
+                result = self.run_task_phases(phases)
+            spinner.join()
+            return result
+
+        with self.shell_manager(phases):
+            return self.run_task_phases(phases)
 
     def reset_event(self) -> None:
         if self.supervisor.is_set():
             self.supervisor.clear()
 
     @contextlib.contextmanager
-    def shell_manager(self, cmds: list[str]):
+    def shell_manager(self, phases: TaskPhases) -> Generator[None]:
         try:
             if not self.mute_commands:
-                self.logger.info("\n".join(cmds))
+                self.logger.info(
+                    "\n".join(f"{name}:\n\t{'\n\t'.join(cmds)}" for name, cmds in phases.items())
+                )
             yield
         except KeyboardInterrupt:
             if self.silent_logs:
@@ -392,8 +410,9 @@ class Runner:
                 f"{Cursor.CLEAR_ANIMATION}Hey, I was in the middle of somethin' here!"
             )
             sys.exit(ExitCode.INTERRUPTED)
-        else:
+        finally:
             if self.silent_logs:
+                # no-op if already set in except block
                 self.supervisor.set()
 
     def spinner(self, i: int) -> None:
@@ -408,6 +427,17 @@ class Runner:
                 break
         self.logger.animate(Cursor.CLEAR_ANIMATION)
         self.logger.animate(Cursor.SHOW_CURSOR)
+
+    def run_task_phases(self, phases: TaskPhases) -> bool:
+        ok = True
+        if pre := phases.get("pre_run"):
+            ok &= self.run_subprocess(pre)
+        if ok:
+            ok &= self.run_subprocess(phases["commands"])
+        if post := phases.get("post_run"):
+            # always run if present
+            ok &= self.run_subprocess(post)
+        return ok
 
     def run_subprocess(self, cmds: list[str]) -> bool:
         sink = subprocess.DEVNULL if self.silent_logs else subprocess.PIPE
@@ -425,13 +455,13 @@ class Runner:
                 if self.silent_logs:
                     proc.wait()
                 else:
-                    self._stream_output(proc)
+                    self.stream_output(proc)
             except KeyboardInterrupt:
-                self._terminate_process_tree(proc)
+                self.terminate_process_tree(proc)
                 raise
         return proc.returncode == 0
 
-    def _stream_output(self, proc: subprocess.Popen[bytes]) -> None:
+    def stream_output(self, proc: subprocess.Popen[bytes]) -> None:
         # NB: unlike read()/communicate() read1() returns as soon as bytes are available.
         # https://docs.python.org/3/library/io.html#io.BufferedIOBase.read1
         assert proc.stdout is not None and proc.stderr is not None
@@ -447,7 +477,7 @@ class Runner:
                     key.data(chunk.decode("utf-8"), end="", flush=True)
 
     @staticmethod
-    def _terminate_process_tree(proc: subprocess.Popen[bytes]) -> None:
+    def terminate_process_tree(proc: subprocess.Popen[bytes]) -> None:
         try:
             os.killpg(proc.pid, signal.SIGTERM)
             proc.wait(timeout=CommonConfig.TERMINATE_TIMEOUT)

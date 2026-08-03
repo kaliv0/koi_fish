@@ -2,6 +2,12 @@
 description = "setup .venv and install dependencies"
 commands = "uv sync --all-extras --dev"
 
+# TODO: remove
+[yes]
+pre_run = ["sleep 3", "echo fizz"]
+commands = ["sleep 5", "echo foo"]
+post_run = ["sleep 3", "echo bar"]
+
 [format]
 description = "format code"
 commands = ["uv run ruff check", "uv run ruff format"]
