@@ -1,6 +1,14 @@
+import signal
+
+
 class CommonConfig:
     CONFIG_FILE = "koi.toml"
     SPINNER_TIMEOUT = 0.5
+    TERMINATE_TIMEOUT = 3.0
+
+
+class ExitCode:
+    INTERRUPTED = 128 + signal.SIGINT
 
 
 class Table:

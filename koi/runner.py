@@ -1,16 +1,17 @@
 import itertools
 import os
+import signal
 import subprocess
 import sys
 import tomllib
 from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import contextmanager
+import contextlib
 from functools import cached_property
 from threading import Event
 from typing import TypeAlias
 
-from koi.constants import CommonConfig, LogMessages, Table, Cursor, TextColor
+from koi.constants import CommonConfig, LogMessages, Table, Cursor, TextColor, ExitCode
 from koi.logger import Logger
 from koi.utils import Timer
 
@@ -174,6 +175,7 @@ class Runner:
 
     ### main flow ###
     def run(self) -> None:
+        signal.signal(signal.SIGTERM, signal.default_int_handler)
         with Timer() as t:
             self.print_header()
             self.run_stages()
@@ -376,7 +378,7 @@ class Runner:
         if self.supervisor.is_set():
             self.supervisor.clear()
 
-    @contextmanager
+    @contextlib.contextmanager
     def shell_manager(self, cmds: list[str]):
         try:
             if not self.mute_commands:
@@ -388,7 +390,7 @@ class Runner:
             self.logger.error(
                 f"{Cursor.CLEAR_ANIMATION}Hey, I was in the middle of somethin' here!"
             )
-            sys.exit()
+            sys.exit(ExitCode.INTERRUPTED)
         else:
             if self.silent_logs:
                 self.supervisor.set()
@@ -407,23 +409,42 @@ class Runner:
         self.logger.animate(Cursor.SHOW_CURSOR)
 
     def run_subprocess(self, cmds: list[str]) -> bool:
-        with subprocess.Popen(
-            " && ".join(cmds),  # presumably every command depends on the previous one,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            shell=True,
-            executable="/bin/bash",
-        ) as proc:
-            if self.silent_logs:
-                proc.communicate()
-            else:
-                # Use read1() instead of read() or Popen.communicate() as both block until EOF
-                # https://docs.python.org/3/library/io.html#io.BufferedIOBase.read1
-                while (text := proc.stdout.read1().decode("utf-8")) or (  # type: ignore
-                    err := proc.stderr.read1().decode("utf-8")  # type: ignore
-                ):
-                    if text:
-                        self.logger.log(text, end="", flush=True)
-                    elif err:  # type: ignore
-                        self.logger.debug(err, end="", flush=True)
+        with (
+            subprocess.Popen(
+                " && ".join(cmds),  # presumably every command depends on the previous one,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                shell=True,
+                executable="/bin/bash",
+                start_new_session=True,  # put shell in its own process group so we can tear-down separately on Ctrl-C
+            ) as proc
+        ):
+            try:
+                if self.silent_logs:
+                    proc.communicate()
+                else:
+                    # Use read1() instead of read() or Popen.communicate() as both block until EOF
+                    # https://docs.python.org/3/library/io.html#io.BufferedIOBase.read1
+                    while (text := proc.stdout.read1().decode("utf-8")) or (  # type: ignore
+                        err := proc.stderr.read1().decode("utf-8")  # type: ignore
+                    ):
+                        if text:
+                            self.logger.log(text, end="", flush=True)
+                        elif err:  # type: ignore
+                            self.logger.debug(err, end="", flush=True)
+            except KeyboardInterrupt:
+                self.terminate_process_tree(proc)
+                raise
         return proc.returncode == 0
+
+    @staticmethod
+    def terminate_process_tree(proc: subprocess.Popen[bytes]) -> None:
+        try:
+            os.killpg(proc.pid, signal.SIGTERM)
+            proc.wait(timeout=CommonConfig.TERMINATE_TIMEOUT)
+        except ProcessLookupError:
+            return
+        except subprocess.TimeoutExpired:
+            with contextlib.suppress(ProcessLookupError):
+                os.killpg(proc.pid, signal.SIGKILL)
+            proc.wait()
