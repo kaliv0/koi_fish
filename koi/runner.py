@@ -26,6 +26,7 @@ from koi.utils import Timer
 Task: TypeAlias = list[str] | str
 TaskTable: TypeAlias = dict[str, Task]
 TaskPhases: TypeAlias = dict[str, list[str]]
+Flow: TypeAlias = list[tuple[str, TaskTable]]
 
 
 class Runner:
@@ -83,59 +84,56 @@ class Runner:
         ]
 
     @cached_property
-    def deferred_tasks(self) -> list[tuple[str, TaskTable]]:
-        return self.prepare_task_flow(is_deferred=True)
+    def deferred_tasks(self) -> Flow:
+        skip: Iterable[str] = (
+            itertools.chain(self.successful_tasks, self.failed_tasks)
+            if not self.allow_duplicates
+            else ()
+        )
+        return self.prepare_task_flow(self.tasks_to_defer, skip)
 
     @cached_property
     def config_tasks(self) -> list[str]:
         return [task for task in self.data if task != Table.RUN]
 
     @cached_property
-    def task_flow(self) -> list[tuple[str, TaskTable]]:
+    def task_flow(self) -> Flow:
+        if (tasks := self.resolve_task_names()) is None:
+            return []
+        self.all_tasks = tasks
+        return self.prepare_task_flow(tasks, self.tasks_to_omit)
+
+    def resolve_task_names(self) -> list[str] | None:
         if self.cli_tasks:
             # -t/--task flag
-            self.all_tasks = self.cli_tasks
-        elif self.run_all:
+            return self.cli_tasks
+        if self.run_all:
             # -r/--run-all
-            self.all_tasks = self.config_tasks
-        elif flow := self.flow_to_describe or self.flow_to_run:
+            return self.config_tasks
+        if flow := self.flow_to_describe or self.flow_to_run:
             # -D or -f
             if not self.is_run_table_defined:
                 self.logger.fail(
                     f"'{self.logger.format_font(Table.RUN, is_failed=True)}' table doesn't exist in the config"
                 )
-                return []
-            if not self.prepare_all_tasks_from_config(flow):
-                return []
-        elif self.is_run_table_defined:
+                return None
+            return self.tasks_from_run_flow(flow)
+        if self.is_run_table_defined:
             # no flag
-            if not self.prepare_all_tasks_from_config(Table.MAIN):
-                return []
-        else:
-            # no flag and no 'run/main' flow in config
-            self.all_tasks = list(self.data)
-        return self.prepare_task_flow()
+            return self.tasks_from_run_flow(Table.MAIN)
+        # no flag and no 'run/main' flow in config
+        return list(self.data)
 
-    def prepare_task_flow(self, is_deferred: bool = False) -> list[tuple[str, TaskTable]]:
-        tasks_list, skip_list = self.get_task_lists(is_deferred)
-        task_flow = []
-        added_tasks = set()
-        for task in tasks_list:
-            if task in skip_list or (task in added_tasks and not self.allow_duplicates):
+    def prepare_task_flow(self, tasks: list[str], skip: Iterable[str]) -> Flow:
+        skip_set = set(skip)
+        task_flow: Flow = []
+        added_tasks: set[str] = set()
+        for task in tasks:
+            if task in skip_set or (task in added_tasks and not self.allow_duplicates):
                 continue
             task_flow.append((task, self.data[task]))
             added_tasks.add(task)
         return task_flow
-
-    def get_task_lists(self, is_deferred: bool) -> tuple[list[str], Iterable[str]]:
-        if is_deferred:
-            skip_list = (
-                itertools.chain(self.successful_tasks, self.failed_tasks)
-                if not self.allow_duplicates
-                else []
-            )
-            return self.tasks_to_defer, skip_list
-        return self.all_tasks, self.tasks_to_omit
 
     @property
     def should_display_stats(self) -> bool:
@@ -159,35 +157,35 @@ class Runner:
     def run_full_pipeline(self) -> bool:
         return not self.cli_tasks or self.run_all
 
-    def prepare_all_tasks_from_config(self, flow: str) -> bool:
+    def tasks_from_run_flow(self, flow: str) -> list[str] | None:
         run_entries = self.data[Table.RUN]
         if flow not in run_entries:
             self.logger.error(
                 f"Error: missing key '{self.logger.format_font(flow)}' in '{self.logger.format_font(Table.RUN)}' table"
             )
-            return False
-        if not run_entries[flow]:
+            return None
+        entry = run_entries[flow]
+        if not entry:
             self.logger.error(
                 f"Error: '{self.logger.format_font(f'{Table.RUN} {flow}')}' cannot be empty"
             )
-            return False
-        if not isinstance(run_entries[flow], list):
+            return None
+        if not isinstance(entry, list):
             self.logger.error(
                 f"Error: '{self.logger.format_font(f'{Table.RUN} {flow}')}' must be of type list"
             )
-            return False
-        if Table.RUN in run_entries[flow]:
+            return None
+        if Table.RUN in entry:
             self.logger.error(
                 f"Error: '{self.logger.format_font(f'{Table.RUN} {flow}')}' cannot contain itself recursively"
             )
-            return False
-        if invalid_tasks := [task for task in run_entries[flow] if task not in self.data]:
+            return None
+        if invalid_tasks := [task for task in entry if task not in self.data]:
             self.logger.error(
                 f"Error: '{self.logger.format_font(f'{Table.RUN} {flow}')}' contains invalid tasks: {invalid_tasks}"
             )
-            return False
-        self.all_tasks = run_entries[flow]  # type: ignore ## 'main' is always list of str
-        return True
+            return None
+        return entry
 
     ### main flow ###
     def run(self) -> None:
@@ -350,7 +348,7 @@ class Runner:
                 self.successful_tasks.append(table)
         return is_run_successful
 
-    def get_subflow_flow(self, is_main_flow: bool) -> list[tuple[str, TaskTable]]:
+    def get_subflow_flow(self, is_main_flow: bool) -> Flow:
         if is_main_flow:
             return self.task_flow
         return self.deferred_tasks

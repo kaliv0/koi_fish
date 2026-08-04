@@ -24,15 +24,10 @@ Scan of potential improvements, edge cases, memory concerns, and performance not
 - **`task_flow` cached_property mutates `all_tasks`** — side effect on first access; awkward to reason about/test.
 - **`skipped_tasks` is also cached** — safe today (only used after the run), fragile if reused earlier.
 - **Spinner future result is never checked** — exceptions in the spinner thread are swallowed.
-- **`ThreadPoolExecutor(2)` per silent task** — extra churn; a daemon thread or one shared executor would be simpler (not a real leak for short CLI runs).
+- **`ThreadPoolExecutor(2)` per silent task** — extra churn; a daemon thread or one shared executor would be simpler (not a real leak for short CLI runs).[DONE]
 
 ## Performance (usually minor for a CLI runner)
 
-- **`task in skip_list`** over a `chain`/list is O(n) per task; a `set` would scale better for big flows.
+- **`task in skip_list`** over a `chain`/list is O(n) per task; a `set` would scale better for big flows. [DONE]
 - **Non-silent path**: one-at-a-time `read1` + decode + print is fine for interactivity, not for max throughput.
 - No meaningful long-lived memory leak pattern for a one-shot CLI process; the real memory risk is silent-mode buffering and deadlocked pipe fill.
-
-## Not bugs, but worth knowing
-
-- Interrupt handling + process-group teardown is in good shape after the recent fix.
-- `failed_tasks` double-counting on build vs execute looks handled correctly via `continue`.
