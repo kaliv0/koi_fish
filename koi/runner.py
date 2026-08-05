@@ -1,21 +1,32 @@
+import contextlib
 import itertools
 import os
+import selectors
+import signal
 import subprocess
 import sys
 import tomllib
-from collections.abc import Iterable
-from concurrent.futures import ThreadPoolExecutor
-from contextlib import contextmanager
+from collections.abc import Generator, Iterable
 from functools import cached_property
-from threading import Event
+from threading import Event, Thread
 from typing import TypeAlias
 
-from koi.constants import CommonConfig, LogMessages, Table, Cursor, TextColor
+from koi.constants import (
+    CommonConfig,
+    Cursor,
+    ExitCode,
+    LogMessages,
+    Table,
+    TableNames,
+    TextColor,
+)
 from koi.logger import Logger
 from koi.utils import Timer
 
 Task: TypeAlias = list[str] | str
 TaskTable: TypeAlias = dict[str, Task]
+TaskPhases: TypeAlias = dict[str, list[str]]
+Flow: TypeAlias = list[tuple[str, TaskTable]]
 
 
 class Runner:
@@ -73,56 +84,56 @@ class Runner:
         ]
 
     @cached_property
-    def deferred_tasks(self) -> list[tuple[str, TaskTable]]:
-        return self.prepare_task_flow(is_deferred=True)
+    def deferred_tasks(self) -> Flow:
+        skip: Iterable[str] = (
+            itertools.chain(self.successful_tasks, self.failed_tasks)
+            if not self.allow_duplicates
+            else ()
+        )
+        return self.prepare_task_flow(self.tasks_to_defer, skip)
 
     @cached_property
     def config_tasks(self) -> list[str]:
         return [task for task in self.data if task != Table.RUN]
 
     @cached_property
-    def task_flow(self) -> list[tuple[str, TaskTable]]:
+    def task_flow(self) -> Flow:
+        if (tasks := self.resolve_task_names()) is None:
+            return []
+        self.all_tasks = tasks
+        return self.prepare_task_flow(tasks, self.tasks_to_omit)
+
+    def resolve_task_names(self) -> list[str] | None:
         if self.cli_tasks:
             # -t/--task flag
-            self.all_tasks = self.cli_tasks
-        elif self.run_all:
+            return self.cli_tasks
+        if self.run_all:
             # -r/--run-all
-            self.all_tasks = self.config_tasks
-        elif flow := self.flow_to_describe or self.flow_to_run:
+            return self.config_tasks
+        if flow := self.flow_to_describe or self.flow_to_run:
             # -D or -f
-            is_successful = self.prepare_all_tasks_from_config(flow)  # noqa
-            if not is_successful:
-                return []
-        elif Table.RUN in self.data:
+            if not self.is_run_table_defined:
+                self.logger.fail(
+                    f"'{self.logger.format_font(Table.RUN, is_failed=True)}' table doesn't exist in the config"
+                )
+                return None
+            return self.tasks_from_run_flow(flow)
+        if self.is_run_table_defined:
             # no flag
-            is_successful = self.prepare_all_tasks_from_config(Table.MAIN)
-            if not is_successful:
-                return []
-        else:
-            # no flag and no 'main' flow in config
-            self.all_tasks = list(self.data)
-        return self.prepare_task_flow()
+            return self.tasks_from_run_flow(Table.MAIN)
+        # no flag and no 'run/main' flow in config
+        return list(self.data)
 
-    def prepare_task_flow(self, is_deferred: bool = False) -> list[tuple[str, TaskTable]]:
-        tasks_list, skip_list = self.get_task_lists(is_deferred)
-        task_flow = []
-        added_tasks = set()
-        for task in tasks_list:
-            if task in skip_list or (task in added_tasks and not self.allow_duplicates):
+    def prepare_task_flow(self, tasks: list[str], skip: Iterable[str]) -> Flow:
+        skip_set = set(skip)
+        task_flow: Flow = []
+        added_tasks: set[str] = set()
+        for task in tasks:
+            if task in skip_set or (task in added_tasks and not self.allow_duplicates):
                 continue
             task_flow.append((task, self.data[task]))
             added_tasks.add(task)
         return task_flow
-
-    def get_task_lists(self, is_deferred: bool) -> tuple[list[str], Iterable[str]]:
-        if is_deferred:
-            skip_list = (
-                itertools.chain(self.successful_tasks, self.failed_tasks)
-                if not self.allow_duplicates
-                else []
-            )
-            return self.tasks_to_defer, skip_list
-        return self.all_tasks, self.tasks_to_omit
 
     @property
     def should_display_stats(self) -> bool:
@@ -139,41 +150,46 @@ class Runner:
         )
 
     @property
+    def is_run_table_defined(self) -> bool:
+        return Table.RUN in self.data
+
+    @property
     def run_full_pipeline(self) -> bool:
         return not self.cli_tasks or self.run_all
 
-    def prepare_all_tasks_from_config(self, flow: str) -> bool:
+    def tasks_from_run_flow(self, flow: str) -> list[str] | None:
         run_entries = self.data[Table.RUN]
         if flow not in run_entries:
             self.logger.error(
                 f"Error: missing key '{self.logger.format_font(flow)}' in '{self.logger.format_font(Table.RUN)}' table"
             )
-            return False
-        if not run_entries[flow]:
+            return None
+        entry = run_entries[flow]
+        if not entry:
             self.logger.error(
                 f"Error: '{self.logger.format_font(f'{Table.RUN} {flow}')}' cannot be empty"
             )
-            return False
-        if not isinstance(run_entries[flow], list):
+            return None
+        if not isinstance(entry, list):
             self.logger.error(
                 f"Error: '{self.logger.format_font(f'{Table.RUN} {flow}')}' must be of type list"
             )
-            return False
-        if Table.RUN in run_entries[flow]:
+            return None
+        if Table.RUN in entry:
             self.logger.error(
                 f"Error: '{self.logger.format_font(f'{Table.RUN} {flow}')}' cannot contain itself recursively"
             )
-            return False
-        if invalid_tasks := [task for task in run_entries[flow] if task not in self.data]:
+            return None
+        if invalid_tasks := [task for task in entry if task not in self.data]:
             self.logger.error(
                 f"Error: '{self.logger.format_font(f'{Table.RUN} {flow}')}' contains invalid tasks: {invalid_tasks}"
             )
-            return False
-        self.all_tasks = run_entries[flow]  # type: ignore ## 'main' is always list of str
-        return True
+            return None
+        return entry
 
     ### main flow ###
     def run(self) -> None:
+        signal.signal(signal.SIGTERM, signal.default_int_handler)
         with Timer() as t:
             self.print_header()
             self.run_stages()
@@ -220,15 +236,24 @@ class Runner:
         if not os.path.exists(config_path):
             self.logger.fail("Config file not found")
             return False
-        if not (os.path.getsize(config_path) and self.read_config_file(config_path)):
+        if not os.path.getsize(config_path):
             self.logger.fail("Empty config file")
             return False
-        return True
+        return self.read_config_file(config_path)
 
     def read_config_file(self, config_path: str) -> bool:
         with open(config_path, "rb") as f:
-            self.data = tomllib.load(f)
-        return bool(self.data)
+            try:
+                self.data = tomllib.load(f)
+            except tomllib.TOMLDecodeError as e:
+                self.logger.fail(
+                    f"Invalid config: {self.logger.format_font(str(e), is_failed=True)}"
+                )
+                return False
+        if not self.data:
+            self.logger.fail("Empty config file")
+            return False
+        return True
 
     def validate_cli_tasks(self) -> bool:
         if not (self.cli_tasks or self.tasks_to_defer):
@@ -251,13 +276,13 @@ class Runner:
         if self.display_all:
             self.logger.log(self.config_tasks)
         elif self.display_run_table:
-            if not (result := self.data.get(Table.RUN)):
+            if not self.is_run_table_defined:
                 self.logger.fail(
                     f"'{self.logger.format_font(Table.RUN, is_failed=True)}' table doesn't exist in the config"
                 )
                 return
             self.logger.info(f"{Table.RUN.upper()}:")
-            self.logger.log(self.prepare_description_log(result))
+            self.logger.log(self.prepare_description_log(self.data[Table.RUN]))
         elif self.flow_to_describe and self.task_flow:
             self.logger.log([task for task, _ in self.task_flow])
         elif self.tasks_to_describe:
@@ -271,6 +296,8 @@ class Runner:
                 self.logger.log(self.prepare_description_log(result))
 
     def prepare_description_log(self, data: TaskTable) -> str:
+        if not data:
+            return ""
         result = []
         longest_key = max(data, key=len)
         padding = " " * (len(longest_key) + 2)
@@ -302,14 +329,14 @@ class Runner:
                 self.logger.log(LogMessages.DELIMITER)
             self.logger.start(f"{table.upper()}:")
             with Timer() as t:
-                if not (cmds := self.build_commands_list(table, table_entries)):
+                if (phases := self.build_command_phases(table, table_entries)) is None:
                     is_run_successful = False
                     if is_main_flow and self.fail_fast:
                         break
                     else:
                         continue
 
-                is_task_successful = self.execute_shell_commands(cmds, i)
+                is_task_successful = self.execute_shell_commands(phases, i)
                 is_run_successful &= is_task_successful
             if not is_task_successful:
                 self.failed_tasks.append(table)
@@ -321,33 +348,33 @@ class Runner:
                 self.successful_tasks.append(table)
         return is_run_successful
 
-    def get_subflow_flow(self, is_main_flow: bool) -> list[tuple[str, TaskTable]]:
+    def get_subflow_flow(self, is_main_flow: bool) -> Flow:
         if is_main_flow:
             return self.task_flow
         return self.deferred_tasks
 
-    def build_commands_list(self, table: str, table_entries: TaskTable) -> list[str]:
-        cmds: list[str] = []
+    def build_command_phases(self, table: str, table_entries: TaskTable) -> TaskPhases | None:
+        phases: TaskPhases = {}
         for names in (Table.PRE_RUN, Table.COMMANDS, Table.POST_RUN):
             cmd, cmd_is_invalid = self.get_command(table_entries, names)
             entry_msg = f"'{self.logger.format_font('|'.join(names))}' entry in '{self.logger.format_font(table)}' table"
             if cmd_is_invalid:
                 self.failed_tasks.append(table)
                 self.logger.error(f"Error: duplicate {entry_msg}")
-                return []
+                return None
             if not cmd and names == Table.COMMANDS:
                 self.failed_tasks.append(table)
                 self.logger.error(f"Error: {entry_msg} cannot be empty or missing")
-                return []
+                return None
             if cmd:
-                self.add_command(cmds, cmd)
-        return cmds
+                self.add_command(phases.setdefault(names.long, []), cmd)
+        return phases
 
     @staticmethod
-    def get_command(table_entries: TaskTable, table_names: set[str]) -> tuple[Task | None, bool]:
+    def get_command(table_entries: TaskTable, table_names: TableNames) -> tuple[Task | None, bool]:
         cmd = None
         for name in table_names:
-            if (entry := table_entries.get(name, None)) is not None:
+            if (entry := table_entries.get(name)) is not None:
                 if cmd:
                     return None, True
                 cmd = entry
@@ -360,27 +387,30 @@ class Runner:
         else:
             cmds_list.append(cmd)
 
-    def execute_shell_commands(self, cmds: list[str], i: int) -> bool:
+    def execute_shell_commands(self, phases: TaskPhases, i: int) -> bool:
         if self.silent_logs:
             self.reset_event()
-            with ThreadPoolExecutor(2) as executor:
-                with self.shell_manager(cmds):
-                    executor.submit(self.spinner, i)
-                    status = self.run_subprocess(cmds)
-            return status
-        else:
-            with self.shell_manager(cmds):
-                return self.run_subprocess(cmds)
+            spinner = Thread(target=self.spinner, args=(i,), daemon=True)
+            with self.shell_manager(phases):
+                spinner.start()
+                result = self.run_task_phases(phases)
+            spinner.join()
+            return result
+
+        with self.shell_manager(phases):
+            return self.run_task_phases(phases)
 
     def reset_event(self) -> None:
         if self.supervisor.is_set():
             self.supervisor.clear()
 
-    @contextmanager
-    def shell_manager(self, cmds: list[str]):
+    @contextlib.contextmanager
+    def shell_manager(self, phases: TaskPhases) -> Generator[None]:
         try:
             if not self.mute_commands:
-                self.logger.info("\n".join(cmds))
+                self.logger.info(
+                    "\n".join(f"{name}:\n\t{'\n\t'.join(cmds)}" for name, cmds in phases.items())
+                )
             yield
         except KeyboardInterrupt:
             if self.silent_logs:
@@ -388,9 +418,10 @@ class Runner:
             self.logger.error(
                 f"{Cursor.CLEAR_ANIMATION}Hey, I was in the middle of somethin' here!"
             )
-            sys.exit()
-        else:
+            sys.exit(ExitCode.INTERRUPTED)
+        finally:
             if self.silent_logs:
+                # no-op if already set in except block
                 self.supervisor.set()
 
     def spinner(self, i: int) -> None:
@@ -406,24 +437,62 @@ class Runner:
         self.logger.animate(Cursor.CLEAR_ANIMATION)
         self.logger.animate(Cursor.SHOW_CURSOR)
 
+    def run_task_phases(self, phases: TaskPhases) -> bool:
+        ok = True
+        if pre := phases.get("pre_run"):
+            ok &= self.run_subprocess(pre)
+        if ok:
+            ok &= self.run_subprocess(phases["commands"])
+        if post := phases.get("post_run"):
+            # always run if present
+            ok &= self.run_subprocess(post)
+        return ok
+
     def run_subprocess(self, cmds: list[str]) -> bool:
-        with subprocess.Popen(
-            " && ".join(cmds),  # presumably every command depends on the previous one,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            shell=True,
-            executable="/bin/bash",
-        ) as proc:
-            if self.silent_logs:
-                proc.communicate()
-            else:
-                # Use read1() instead of read() or Popen.communicate() as both block until EOF
-                # https://docs.python.org/3/library/io.html#io.BufferedIOBase.read1
-                while (text := proc.stdout.read1().decode("utf-8")) or (  # type: ignore
-                    err := proc.stderr.read1().decode("utf-8")  # type: ignore
-                ):
-                    if text:
-                        self.logger.log(text, end="", flush=True)
-                    elif err:  # type: ignore
-                        self.logger.debug(err, end="", flush=True)
+        sink = subprocess.DEVNULL if self.silent_logs else subprocess.PIPE
+        with (
+            subprocess.Popen(
+                " && ".join(cmds),  # presumably every command depends on the previous one,
+                stdout=sink,
+                stderr=sink,
+                shell=True,
+                executable="/bin/bash",
+                start_new_session=True,  # put shell in its own process group so we can tear-down separately on Ctrl-C
+            ) as proc
+        ):
+            try:
+                if self.silent_logs:
+                    proc.wait()
+                else:
+                    self.stream_output(proc)
+            except KeyboardInterrupt:
+                self.terminate_process_tree(proc)
+                raise
         return proc.returncode == 0
+
+    def stream_output(self, proc: subprocess.Popen[bytes]) -> None:
+        # NB: unlike read()/communicate() read1() returns as soon as bytes are available.
+        # https://docs.python.org/3/library/io.html#io.BufferedIOBase.read1
+        assert proc.stdout is not None and proc.stderr is not None
+        with selectors.DefaultSelector() as sel:
+            sel.register(proc.stdout, selectors.EVENT_READ, self.logger.log)
+            sel.register(proc.stderr, selectors.EVENT_READ, self.logger.debug)
+            while sel.get_map():
+                for key, _ in sel.select():
+                    chunk = key.fileobj.read1()  # type: ignore[union-attr]
+                    if not chunk:
+                        sel.unregister(key.fileobj)
+                        continue
+                    key.data(chunk.decode("utf-8"), end="", flush=True)
+
+    @staticmethod
+    def terminate_process_tree(proc: subprocess.Popen[bytes]) -> None:
+        try:
+            os.killpg(proc.pid, signal.SIGTERM)
+            proc.wait(timeout=CommonConfig.TERMINATE_TIMEOUT)
+        except ProcessLookupError:
+            return
+        except subprocess.TimeoutExpired:
+            with contextlib.suppress(ProcessLookupError):
+                os.killpg(proc.pid, signal.SIGKILL)
+            proc.wait()

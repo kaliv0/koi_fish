@@ -25,6 +25,7 @@ post_run = "rm -rf .pytest_cache/"
 ```
 
 - <i>description</i>, <i>pre_run</i> and <i>post_run</i> could be optional but not <i>commands</i>
+- <i>post_run</i> always runs as cleanup (even if <i>pre_run</i> or <i>commands</i> failed)
 
 ```toml
 [no-deps]
