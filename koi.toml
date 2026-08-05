@@ -2,12 +2,6 @@
 description = "setup .venv and install dependencies"
 commands = "uv sync --all-extras --dev"
 
-# TODO: remove
-[yes]
-pre_run = ["sleep 3", "echo fizz"]
-commands = ["sleep 5", "echo foo"]
-post_run = ["sleep 3", "echo bar"]
-
 [format]
 description = "format code"
 commands = ["uv run ruff check", "uv run ruff format"]
@@ -23,5 +17,3 @@ commands = "rm -rf .venv/ .ruff_cache/ .mypy_cache/"
 [run]
 description = "tasks pipeline"
 main = ["install", "format", "lint"]
-# TODO: remove
-full = ["install", "lint", "format", "yes"]
