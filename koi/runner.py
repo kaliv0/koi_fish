@@ -7,8 +7,9 @@ import subprocess
 import sys
 import tomllib
 from collections.abc import Generator, Iterable
+from concurrent.futures import ThreadPoolExecutor
 from functools import cached_property
-from threading import Event, Thread
+from threading import Event
 from typing import TypeAlias
 
 from koi.constants import (
@@ -390,12 +391,11 @@ class Runner:
     def execute_shell_commands(self, phases: TaskPhases, i: int) -> bool:
         if self.silent_logs:
             self.reset_event()
-            spinner = Thread(target=self.spinner, args=(i,), daemon=True)
-            with self.shell_manager(phases):
-                spinner.start()
-                result = self.run_task_phases(phases)
-            spinner.join()
-            return result
+            with ThreadPoolExecutor(1) as executor:
+                with self.shell_manager(phases):
+                    executor.submit(self.spinner, i)
+                    status = self.run_task_phases(phases)
+            return status
 
         with self.shell_manager(phases):
             return self.run_task_phases(phases)
@@ -427,15 +427,17 @@ class Runner:
     def spinner(self, i: int) -> None:
         animation_idx = i % len(LogMessages.ANIMATIONS)
         msg = "Keep fishin'!"
-        self.logger.animate(Cursor.HIDE_CURSOR)
-        for ch in itertools.cycle(LogMessages.ANIMATIONS[animation_idx]):
-            self.logger.animate(f"\r{ch}\t{msg}", flush=True)
-            if animation_idx > 0:
-                self.logger.animate(Cursor.MOVE_CURSOR_UP)
-            if self.supervisor.wait(CommonConfig.SPINNER_TIMEOUT):
-                break
-        self.logger.animate(Cursor.CLEAR_ANIMATION)
-        self.logger.animate(Cursor.SHOW_CURSOR)
+        try:
+            self.logger.animate(Cursor.HIDE_CURSOR)
+            for ch in itertools.cycle(LogMessages.ANIMATIONS[animation_idx]):
+                self.logger.animate(f"\r{ch}\t{msg}", flush=True)
+                if animation_idx > 0:
+                    self.logger.animate(Cursor.MOVE_CURSOR_UP)
+                if self.supervisor.wait(CommonConfig.SPINNER_TIMEOUT):
+                    break
+        finally:
+            self.logger.animate(Cursor.CLEAR_ANIMATION)
+            self.logger.animate(Cursor.SHOW_CURSOR)
 
     def run_task_phases(self, phases: TaskPhases) -> bool:
         ok = True
@@ -449,26 +451,35 @@ class Runner:
         return ok
 
     def run_subprocess(self, cmds: list[str]) -> bool:
-        sink = subprocess.DEVNULL if self.silent_logs else subprocess.PIPE
-        with (
-            subprocess.Popen(
-                " && ".join(cmds),  # presumably every command depends on the previous one,
-                stdout=sink,
-                stderr=sink,
-                shell=True,
-                executable="/bin/bash",
-                start_new_session=True,  # put shell in its own process group so we can tear-down separately on Ctrl-C
-            ) as proc
-        ):
-            try:
-                if self.silent_logs:
-                    proc.wait()
-                else:
-                    self.stream_output(proc)
-            except KeyboardInterrupt:
-                self.terminate_process_tree(proc)
-                raise
+        with self.subresource_manager(cmds) as proc:
+            if self.silent_logs:
+                proc.wait()
+            else:
+                self.stream_output(proc)
         return proc.returncode == 0
+
+    @contextlib.contextmanager
+    def subresource_manager(self, cmds: list[str]) -> Generator[subprocess.Popen[bytes]]:
+        sink = subprocess.DEVNULL if self.silent_logs else subprocess.PIPE
+        proc = subprocess.Popen(
+            " && ".join(cmds),  # presumably every command depends on the previous one,
+            stdout=sink,
+            stderr=sink,
+            shell=True,
+            executable="/bin/bash",
+            start_new_session=True,  # put shell in its own process group so we can tear-down separately on Ctrl-C
+        )
+        try:
+            yield proc
+        except BaseException:
+            self.terminate_process_tree(proc)
+            raise
+        finally:
+            for stream in (proc.stdout, proc.stderr):
+                if stream is not None:
+                    stream.close()
+            if proc.returncode is None:
+                proc.wait()
 
     def stream_output(self, proc: subprocess.Popen[bytes]) -> None:
         # NB: unlike read()/communicate() read1() returns as soon as bytes are available.
@@ -483,7 +494,7 @@ class Runner:
                     if not chunk:
                         sel.unregister(key.fileobj)
                         continue
-                    key.data(chunk.decode("utf-8"), end="", flush=True)
+                    key.data(chunk.decode("utf-8", errors="replace"), end="", flush=True)
 
     @staticmethod
     def terminate_process_tree(proc: subprocess.Popen[bytes]) -> None:
