@@ -142,8 +142,8 @@ def get_command_line_args() -> Namespace:
 
 
 def param_checker(param: str) -> str:
-    if param == Table.RUN:
-        raise ArgumentTypeError(f'"{Table.RUN}" is a reserved keyword')
+    if param in [Table.RUN, Table.PARAMS]:
+        raise ArgumentTypeError(f'"{param}" is a reserved keyword')
     return param
 
 

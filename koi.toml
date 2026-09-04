@@ -1,10 +1,14 @@
+[params]
+flag = "dev"
+fmt = "format"
+
 [install]
 description = "setup .venv and install dependencies"
-commands = "uv sync --all-extras --dev"
+commands = "uv sync --all-extras --@@flag"
 
 [format]
 description = "format code"
-commands = ["uv run ruff check", "uv run ruff format"]
+commands = ["uv run ruff check", "uv run ruff @@fmt"]
 
 [lint]
 description = "run mypy"

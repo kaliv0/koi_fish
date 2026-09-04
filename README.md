@@ -48,6 +48,20 @@ post = "rm -rf .pytest_cache/"
 commands = ["uv run ruff check", "uv run ruff format"]
 ```
 
+- Optional <i>[params]</i> table: define reusable values and reference them with the <i>@@</i> prefix
+
+```toml
+[params]
+flag = "dev"
+fmt = "format"
+
+[install]
+commands = "uv sync --all-extras --@@flag"
+
+[format]
+commands = ["uv run ruff check", "uv run ruff @@fmt"]
+```
+
 - You could provide an optional [run] table inside the config file with a <i>'main'</i> flow - list of selected tasks to run, alongside with other flows
   <br>(In this case the 'main' table is mandatory and will be executed by default unless explicitly specified otherwise)
 
@@ -62,13 +76,17 @@ full = ["install", "lint", "format", "test", "teardown"]
 Example <i>koi.toml</i> (used as a main automation tool during the development of this project)
 
 ```toml
+[params]
+flag = "dev"
+fmt = "format"
+
 [install]
 description = "setup .venv and install dependencies"
-commands = "uv sync --all-extras --dev"
+commands = "uv sync --all-extras --@@flag"
 
 [format]
 description = "format code"
-commands = ["uv run ruff check", "uv run ruff format"]
+commands = ["uv run ruff check", "uv run ruff @@fmt"]
 
 [lint]
 description = "run mypy"

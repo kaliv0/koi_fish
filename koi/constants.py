@@ -3,6 +3,8 @@ from collections import namedtuple
 
 TableNames = namedtuple("TableNames", ["long", "short"])
 
+PARAM_PREFIX = "@@"
+
 
 class CommonConfig:
     CONFIG_FILE = "koi.toml"
@@ -20,6 +22,7 @@ class Table:
     POST_RUN = TableNames("post_run", "post")
     RUN = "run"
     MAIN = "main"
+    PARAMS = "params"
 
 
 class LogLevel:

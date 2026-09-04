@@ -13,6 +13,7 @@ from threading import Event
 from typing import TypeAlias
 
 from koi.constants import (
+    PARAM_PREFIX,
     CommonConfig,
     Cursor,
     ExitCode,
@@ -95,7 +96,7 @@ class Runner:
 
     @cached_property
     def config_tasks(self) -> list[str]:
-        return [task for task in self.data if task != Table.RUN]
+        return [task for task in self.data if task not in (Table.RUN, Table.PARAMS)]
 
     @cached_property
     def task_flow(self) -> Flow:
@@ -254,7 +255,36 @@ class Runner:
         if not self.data:
             self.logger.fail("Empty config file")
             return False
+
+        if Table.PARAMS in self.data:
+            try:
+                self.resolve_params()
+            except ValueError as e:
+                self.logger.fail(str(e))
+                return False
         return True
+
+    def resolve_params(self) -> None:
+        params = self.data[Table.PARAMS]
+        skip = {Table.PARAMS, Table.RUN}
+
+        for tname, entries in self.data.items():
+            if tname in skip:
+                continue
+            for key, value in entries.items():
+                if isinstance(value, str):
+                    entries[key] = self.replace_value(value, params)
+                elif isinstance(value, list):
+                    entries[key] = [self.replace_value(item, params) for item in value]
+
+    @staticmethod
+    def replace_value(value: str, params: dict) -> str:
+        if (idx := value.find(PARAM_PREFIX)) == -1:
+            return value
+        pname = value[idx + len(PARAM_PREFIX) :]
+        if pname not in params:
+            raise ValueError(f"Param {pname} not defined")
+        return value[:idx] + params[pname]
 
     def validate_cli_tasks(self) -> bool:
         if not (self.cli_tasks or self.tasks_to_defer):

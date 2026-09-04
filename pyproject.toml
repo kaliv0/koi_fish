@@ -1,6 +1,6 @@
 [project]
 name = "koi-fish"
-version = "2.1.1"
+version = "2.2.0"
 description = "CLI task runner & automation tool"
 keywords = ["task automation", "cli tool", "command line runner", "task runner"]
 authors = [
